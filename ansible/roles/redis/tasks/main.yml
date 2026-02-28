@@ -1,0 +1,27 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/redis
+
+- block:
+  - name: Create deployment folder
+    file:
+      path: '/u01/redis'
+      state: directory
+      owner: root
+      group: root
+      mode: '0755'
+  
+  - name: Copy docker-compose.yml file to server
+    copy:
+      src: 'docker-compose.yml'
+      dest: '/u01/redis/docker-compose.yml'
+      backup: yes
+  tags: [ config ]
+
+- name: Deploy redis 
+  shell: |
+    docker compose up -d
+  args:
+    chdir: '/u01/redis'
+  register: result
+  tags: [ deploy ]
