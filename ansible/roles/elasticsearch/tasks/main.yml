@@ -1,0 +1,59 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/elasticsearch
+
+- name: Config vm params 
+  include_tasks: config_vm_params.yml 
+
+- name: Create folder '{{ es_deploy_dir }}/config' if not exists 
+  file: 
+    path: '{{ es_deploy_dir }}/config' 
+    state: directory 
+    owner: root 
+    group: root 
+    mode: '0644' 
+    recurse: yes # tạo cả thư mục cha nếu chưa tồn tại 
+
+- name: Copy docker-compose.yml file 
+  template: 
+    src: docker-compose.yml.j2 
+    dest: '{{ es_deploy_dir }}/docker-compose.yml' 
+    mode: '0644' 
+    owner: root 
+    group: root 
+
+- name: Copy elasticsearch.yml file 
+  template: 
+    src: elasticsearch.yml.j2 
+    dest: '{{ es_deploy_dir }}/config/elasticsearch.yml' 
+    mode: '0644' 
+    owner: root 
+    group: root 
+
+- name: Copy custom_jvm.options file 
+  template: 
+    src: custom_jvm.options.j2 
+    dest: '{{ es_deploy_dir }}/config/custom_jvm.options' 
+    mode: '0644' 
+    owner: root 
+    group: root 
+
+- name: Create log directory 
+  file: 
+    path: '{{ es_deploy_dir }}/logs' 
+    state: directory 
+    mode: '0755' # Directory permissions 
+    owner: 1000 # UID of the user 
+    group: 1000 # GID of the group 
+    recurse: yes # Apply ownership and permissions recursivel 
+
+- name: Run docker compose 
+  shell: | 
+    docker compose up -d --force-recreate
+  args: 
+    chdir: "{{ es_deploy_dir }}" 
+  register: result 
+
+- name: Result 
+  debug: 
+    var: result

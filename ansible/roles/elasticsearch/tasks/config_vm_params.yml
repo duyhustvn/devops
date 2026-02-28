@@ -1,0 +1,17 @@
+- name: Set vm.max_map_count to "{{ max_map_count }}" 
+  sysctl: 
+    name: vm.max_map_count 
+    value: "{{ max_map_count }}" 
+    state: present 
+    reload: yes # Reload sysctl after applying the change
+
+- name: Ensure vm.max_map_count is permanent in sysctl.conf 
+  lineinfile: 
+    path: /etc/sysctl.conf 
+    regexp: '^vm.max_map_count' 
+    line: 'vm.max_map_count={{ max_map_count }}' 
+    state: present 
+    create: yes # If sysctl.conf doesn't exist, it will be created
+
+- name: Reload sysctl settings 
+  command: sysctl -p

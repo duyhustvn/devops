@@ -1,0 +1,15 @@
+{
+  "index_patterns": ["logstash-*"],
+  "priority": 500,
+  "template": {
+    "settings": {
+      "number_of_shards": 2,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "mysafe-logs-15minutes-search-archive",
+      "index.routing.allocation.include._tier_preference": "data_hot"
+    },
+    "mappings": {
+      /* Thêm mapping cụ thể cho fields log nếu bạn muốn cố định kiểu dữ liệu */
+    }
+  }
+}

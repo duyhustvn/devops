@@ -1,0 +1,29 @@
+{
+    "policy": {
+        "phases": {
+            "hot": {
+                "min_age": "0ms",
+                "actions": {
+                    "set_priority": {
+                        "priority": 100
+                    }
+                }
+            },
+            "warm": {
+                "min_age": "15m", // set to 15 minutes
+                "actions": {
+                    "migrate": {},
+                    "set_priority": {
+                        "priority": 50
+                    },
+                    "shrink": {
+                        "number_of_shards": 1
+                    },
+                    "forcemerge": {
+                        "max_num_segments": 1
+                    }
+                }
+            }
+        }
+    }
+}

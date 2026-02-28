@@ -1,0 +1,8 @@
+discovery_seed_hosts: ["192.168.56.151:9300", "192.168.56.152:9300", "192.168.56.153:9300"]
+initial_master_nodes: ["es_01", "es_02", "es_03"]
+cluster_name: devlocal
+disk_watermark_low: 90%
+disk_watermark_high: 96%
+disk_watermark_flood_stage: 98%
+java_opts_xms: -Xms2g
+java_opts_xmx: -Xms2g

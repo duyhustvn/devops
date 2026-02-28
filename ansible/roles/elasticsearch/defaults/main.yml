@@ -1,0 +1,13 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/elasticsearch
+
+elasticsearch_image: elasticsearch:8.13.0
+cluster_name: devlocal
+es_deploy_dir: /u01/deployments/elasticsearch
+max_map_count: 262144
+heap_dump_path: /var/lib/elasticsearch 
+log_dir: /usr/share/elasticsearch/logs 
+error_file: hs_err_pid%p.log 
+gc_log: -Xlog:gc*,gc+age=trace,safepoint:file=/usr/share/elasticsearch/logs/gc.log:utctime,level,pid,tags:filecount=32,filesize=64m 
+
