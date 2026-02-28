@@ -1,0 +1,31 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/k8s
+
+
+- block:
+  - name: Join k8s cluster
+    include_tasks: join_k8s_cluster.yml
+  tags: [ join_k8s_cluster ]
+
+- block:
+  - name: Install and config kubectl
+    include_tasks: config_kubectl.yml
+  when: inventory_hostname in groups['rke2-master']
+  tags: [ config_kubectl ]
+
+- block: # Config cni
+  - name: Config CNI
+    include_tasks: config_cni.yml
+  when: inventory_hostname == "master-01"
+  tags: [ config_cni ]
+
+- block:
+  - name: Deploy storageclass
+    include_tasks: storageclass.yml
+  tags: [ deploy_storageclass ]
+
+- block:
+  - name: Label nodes 
+    include_tasks: label_node.yml 
+  tags: [ label_node ]

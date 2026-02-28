@@ -1,0 +1,74 @@
+- block: # Download rke2 if not exists
+    - name: Download rke2 if not exists
+      include_tasks: download_artifact.yml
+  tags: [ download_rke2 ]
+
+- block: 
+  - name: Copy rke2-artifacts into remote server
+    synchronize:
+      src: rke2-artifacts
+      dest: /root
+      recursive: yes
+      rsync_opts:
+        - "--chown=root:root"
+      use_ssh_args: yes
+  tags: [ sync_rke2_artifacts ]
+
+- block:
+  # https://docs.rke2.io/advanced#configuring-an-http-proxy
+  - name: Config proxy for rke2
+    copy:
+      dest:  /etc/default/{{ item }}
+      content: |
+        HTTP_PROXY={{ proxy }}
+        HTTPS_PROXY={{ proxy }}
+        NO_PROXY=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+    loop:
+      - rke2-server
+      - rke2-agent
+  when: proxy is defined and proxy != ""
+  tags: [ config_rke2_proxy ]
+  
+- block:
+  - name: Running rke2 installation script
+    shell: |
+      INSTALL_RKE2_ARTIFACT_PATH=/root/rke2-artifacts sh install.sh
+    args:
+      chdir: /root/rke2-artifacts
+    register: result
+
+  - name: Show result of install rke2
+    debug:
+      var: result
+  tags: [ install_rke2 ]
+
+- block: # Install and config keepalived for master only if have
+  - name: Install and config keepalived 
+    include_tasks: keepalived.yml
+  when: inventory_hostname in groups['rke2-master'] and vip is defined and vip != ''
+  tags: [ install_keepalived ]
+
+- block:
+  - name: Create rke2 config directory at {{ rke2_config_dir }}  
+    file:
+      path: '{{ rke2_config_dir }}'
+      state: directory
+      owner: root
+      group: root
+      mode: '0755'
+  - name: Create Rke2 config.yml file
+    template:
+      src: 'rke2/config.yaml.j2'
+      dest: '{{ rke2_config_dir }}/config.yaml'
+      mode: '0644'
+      owner: root
+      group: root
+  tags: [ config_rke2 ]
+
+- name: Start Rke2 service
+  systemd:
+    name: "{{ 'rke2-server' if inventory_hostname in groups['rke2-master'] else 'rke2-agent' }}"
+    state: started
+    enabled: yes
+  tags: [ start_rke2 ]
+

@@ -1,0 +1,6 @@
+- block:
+  - name: Label nodes
+    shell: |
+      kubectl label node {{ hostvars[item].node_name }} {{ hostvars[item].labels }}
+    when: hostvars[item].labels is defined and hostvars[item].labels != '' and inventory_hostname == "master-01"
+    loop: "{{ groups['rke2'] }}"

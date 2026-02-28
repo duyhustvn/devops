@@ -1,0 +1,11 @@
+# Reference: https://docs.rke2.io/networking/basic_network_options?CNIplugin=Canal+CNI+Plugin
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-canal
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    flannel:
+      iface: "{{ vip_interface }}"

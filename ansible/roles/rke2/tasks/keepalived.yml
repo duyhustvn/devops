@@ -1,0 +1,16 @@
+- name: Update apt
+  apt:
+    update_cache: yes
+
+- name: Install Keepalived for VIP management (masters only)
+  package:
+    name: keepalived
+    state: present
+
+- name: Configure Keepalived for VIP {{ vip }} (masters only)
+  template:
+    src: 'keepalived/keepalived.conf.j2'
+    dest: '/etc/keepalived/keepalived.conf'
+    mode: '0644'
+  notify:
+    - Reload Keepalived

@@ -1,0 +1,9 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for roles/k8s
+
+- name: Reload Keepalived
+  systemd:
+    name: keepalived
+    state: reloaded
+    enabled: yes

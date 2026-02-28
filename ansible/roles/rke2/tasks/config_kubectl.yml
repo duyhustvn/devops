@@ -1,0 +1,23 @@
+- block:
+  - name: Copy kubectl
+    shell: |
+      cp /var/lib/rancher/rke2/bin/kubectl /usr/local/bin/kubectl
+    register: result
+  - name: Show result of running cp kubectl 
+    debug:
+      var: result
+  - name: Create /root/.kube folder
+    file:
+      path: '/root/.kube'
+      state: directory
+      owner: root
+      group: root
+      mode: '0644'
+      recurse: yes  # tạo cả thư mục cha nếu chưa tồn tại
+  - name: Copy rke2 config rke2.yaml
+    shell: |
+      cp /etc/rancher/rke2/rke2.yaml /root/.kube/config
+    register: result
+  - name: Show result of running cp kubectl 
+    debug:
+      var: result

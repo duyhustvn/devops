@@ -1,0 +1,79 @@
+- block:
+    - name: Check if rke2 images core is downloaded in controller node
+      delegate_to: localhost
+      stat:
+        path: "{{ role_path }}/files/rke2-artifacts/rke2-images-core.linux-amd64.tar.gz"
+      register: rke2_images_core
+    - name: Download rke2 images core if not exists
+      delegate_to: localhost
+      get_url:
+        url: "{{ rke2_images_core_url }}"
+        dest: "{{ role_path }}/files/rke2-artifacts/rke2-images-core.linux-amd64.tar.gz"
+        mode: "0644"
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+      when: not rke2_images_core.stat.exists
+  become: false
+
+- block:
+    - name: Check if rke2 binary is downloaded in controller node
+      delegate_to: localhost
+      stat:
+        path: "{{ role_path }}/files/rke2-artifacts/rke2.linux-amd64.tar.gz"
+      register: rke2_binary
+    - name: Download rke2 binary core if not exists
+      delegate_to: localhost
+      get_url:
+        url: "{{ rke2_binary_url }}"
+        dest: "{{ role_path }}/files/rke2-artifacts/rke2.linux-amd64.tar.gz"
+        mode: "0644"
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+      when: not rke2_binary.stat.exists
+  become: false
+
+- block:
+    - name: Check if rke2 images cni {{ cni }} is downloaded in controller node
+      delegate_to: localhost
+      stat:
+        path: "{{ role_path }}/files/rke2-artifacts/rke2-images-{{ cni }}.linux-amd64.tar.gz"
+      register: rke2_cni
+    - name: Download rke2 images cni {{ cni }} if not exists
+      delegate_to: localhost
+      get_url:
+        url: "{{ rke2_images_canal_url if cni == 'canal' else rke2_images_cilium_url }}"
+        dest: "{{ role_path }}/files/rke2-artifacts/rke2-images-{{ cni }}.linux-amd64.tar.gz"
+        mode: "0644"
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+      when: not rke2_cni.stat.exists
+  become: false
+
+- block:
+    - name: Check if rke2 sha256 sum is downloaded in controller node
+      delegate_to: localhost
+      stat:
+        path: "{{ role_path }}/files/rke2-artifacts/sha256sum-amd64.txt"
+      register: rke2_sha256sum
+    - name: Download rke2 sha256 sum if not exists
+      delegate_to: localhost
+      get_url:
+        url: "{{ rke2_sha256sum_url }}"
+        dest: "{{ role_path }}/files/rke2-artifacts/sha256sum-amd64.txt"
+        mode: "0644"
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+      when: not rke2_sha256sum.stat.exists
+  become: false
+
+- block:
+    - name: Check if rke2 installation script is downloaded in controller node
+      delegate_to: localhost
+      stat:
+        path: "{{ role_path }}/files/rke2-artifacts/install.sh"
+      register: rke2_install_script
+    - name: Download rke2 installation script if not exists
+      delegate_to: localhost
+      get_url:
+        url: "{{ rke2_install_script_url }}"
+        dest: "{{ role_path }}/files/rke2-artifacts/install.sh"
+        mode: "0644"
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+      when: not rke2_install_script.stat.exists
+  become: false

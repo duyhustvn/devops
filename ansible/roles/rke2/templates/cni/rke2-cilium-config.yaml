@@ -1,0 +1,12 @@
+# Reference: https://docs.rke2.io/networking/basic_network_options?CNIplugin=Cilium+CNI+Plugin
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-cilium
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    kubeProxyReplacement: true
+    k8sServiceHost: "127.0.0.1"
+    k8sServicePort: "6443"

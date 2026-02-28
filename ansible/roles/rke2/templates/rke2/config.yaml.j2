@@ -1,0 +1,29 @@
+node-ip: {{ ansible_host }}
+node-name: {{ node_name }}
+{% if inventory_hostname != groups['rke2-master'][0] %}
+server: https://{{ hostvars[groups['rke2-master'][0]].ansible_host }}:9345
+{% endif %}
+token: {{ rke2_token }}
+{% if inventory_hostname in groups['rke2-master'] %}
+tls-san:
+{% for host in groups['rke2-master'] %}
+  - {{ host }}
+  - {{ hostvars[host].ansible_host }}
+{% endfor %}
+  {{ '- ' + vip if vip is defined and vip != '' }}
+{% endif %}
+# debug: true
+disable:
+  - rke2-ingress-nginx
+cni:
+  - {{ cni }}
+
+disable-cloud-controller: true
+{% if cni == 'cilium' %}
+disable-kube-proxy: true
+{% endif %}
+enable-servicelb: true
+kube-apiserver-arg:
+  - "default-not-ready-toleration-seconds=30"
+  - "default-unreachable-toleration-seconds=30"
+mode: '0644'
