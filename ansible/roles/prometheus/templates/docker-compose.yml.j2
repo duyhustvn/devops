@@ -1,0 +1,15 @@
+services:
+  prometheus:
+    image: {{ prometheus_image }}
+    restart: always
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+
+volumes:
+  prometheus_data:
+    driver: local

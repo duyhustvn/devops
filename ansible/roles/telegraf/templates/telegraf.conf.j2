@@ -1,0 +1,27 @@
+[global_tags]
+environment = "{{ env }}"
+project = "{{ project }}"
+ip_addr = "{{ ansible_host }}"
+
+[agent]
+interval = "1m"
+round_interval = true
+metric_buffer_limit = 10000
+flush_buffer_when_full = true
+collection_jitter = "0s"
+flush_interval = "10s"
+flush_jitter = "0s"
+debug = false
+quiet = false
+hostname = "{{ ansible_host }}"
+logfile = "/var/log/telegraf/telegraf.log"
+
+{% for item in outputs %}
+[[outputs.{{ item.name}}]]
+urls = {{ item.urls | to_json }}
+database = "{{ item.database }}"
+precision = "s"
+timeout = "10s"
+username = "{{ item.username }}"
+password = "{{ lookup('vars', item.name + '_pass') }}"
+{% endfor %}

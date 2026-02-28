@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['172.17.0.1:7071']
+
+  - job_name: 'pgpool'
+    static_configs:
+      - targets: {{ prometheus.pgpool.targets | to_json }}

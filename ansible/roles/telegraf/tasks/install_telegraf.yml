@@ -1,0 +1,14 @@
+---
+
+- name: Install Telegraf (Debian/Ubuntu)
+  apt:
+    name: telegraf
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install Telegraf (RHEL/CentOS)
+  yum:
+    name: telegraf
+    state: present
+  when: ansible_os_family == "RedHat"

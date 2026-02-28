@@ -1,0 +1,14 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/
+
+- block:
+    - name: Install Telegraf block
+      include_tasks: install_telegraf.yml
+  tags: [ install_telegraf ]
+
+- block:
+    - name: Config Telegraf block
+      include_tasks: config_telegraf.yml
+  notify: Restart Telegraf
+  tags: [ config_telegraf ]

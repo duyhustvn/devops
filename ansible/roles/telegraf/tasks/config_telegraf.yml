@@ -1,0 +1,7 @@
+- name: Copy telegraf.conf to remote server
+  template:
+    src: telegraf.conf.j2
+    dest: /etc/telegraf/telegraf.conf
+    mode: '0644'
+    owner: root
+    backup: yes

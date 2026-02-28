@@ -1,0 +1,8 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/grafana
+
+
+grafana_image: grafana/grafana:12.2
+grafana_admin_user: admin
+deploy_dir: /u01/grafana

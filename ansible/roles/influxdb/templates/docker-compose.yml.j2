@@ -1,0 +1,30 @@
+services:
+  influxdb:
+    image: {{ influxdb_image }}
+    container_name: influxdb
+    restart: always
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME={{ influxdb_username }}
+      - DOCKER_INFLUXDB_INIT_PASSWORD={{ influxdb_pass }}
+      - DOCKER_INFLUXDB_INIT_BUCKET={{ influxdb_database }}
+    ports:
+      - 8086:8086
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+
+  chronograf:
+    image: chronograf:1.10 
+    container_name: chronograf
+    ports:
+      - "8888:8888"
+    depends_on:
+      - influxdb
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_USERNAME={{ influxdb_username }}
+      - INFLUXDB_PASSWORD={{ influxdb_pass }}
+    restart: always
+
+volumes:
+  influxdb_data:

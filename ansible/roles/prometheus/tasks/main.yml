@@ -1,0 +1,27 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/prometheus
+
+- block:
+  - name: Create deployment folder
+    file:
+      path: '{{ deploy_dir }}'
+      state: directory
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: Copy doker-compose file into remote server
+    template:
+      src: "{{ item }}"
+      dest: "{{ deploy_dir }}/{{ item | basename | regex_replace('\\.j2$', '') }}"
+    loop: "{{ lookup('fileglob', 'templates/*.j2', wantlist=True) }}"
+  tags: [ config_prometheus ]
+
+- name: Deploy prometheus
+  shell: |
+    docker compose up -d
+  args:
+    chdir: '{{ deploy_dir }}'
+  register: result
+  tags: [ deploy_prometheus ]
