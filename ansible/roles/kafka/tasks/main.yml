@@ -1,0 +1,29 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/kafka
+
+- block:
+  - name: Create deployment folder
+    file:
+      path: '/u01/kafka'
+      state: directory
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: Copy file into remote server
+    synchronize:
+      src: '{{ role_path }}/files/'
+      dest: '/u01/kafka'
+      recursive: yes
+      rsync_opts:
+        - "--chown=root:root"
+  tags: [ config ]
+
+- name: Deploy kafka
+  shell: |
+    docker compose up -d
+  args:
+    chdir: '/u01/kafka'
+  register: result
+  tags: [ deploy ]
