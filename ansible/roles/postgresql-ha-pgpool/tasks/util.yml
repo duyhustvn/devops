@@ -1,0 +1,27 @@
+- block:
+    - name: Update pg_hba of PostgreSQL
+      include_tasks: psql/update_pghba.yml
+  tags: [ update_pghba ]
+
+- block:
+    - name: Update pool_hba of Pgpool
+      include_tasks: pgpool2/update_pool_hba.yml
+  notify: Restart PgPool
+  tags: [ update_pool_hba ]
+
+- block:
+    - name: Grant privilege
+      include_tasks: psql/grant_user.yml
+  when: inventory_hostname == "node-db-01"
+  tags: [ grant_user ]
+
+- block:
+  - name: Config Pgpool
+    template:
+      src: pgpool2/pgpool.conf.j2
+      dest: '{{ pgpool_config_dir }}/pgpool.conf'
+      mode: '0640'
+      owner: root
+      group: postgres
+    notify: Restart PgPool
+  tags: [ update_pool_config ]

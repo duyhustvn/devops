@@ -1,0 +1,12 @@
+services:
+  pgpool2_exporter:
+    image: pgpool/pgpool2_exporter:1.2.2
+    container_name: pgpool2_exporter
+    ports:
+      - 9719:9719
+    restart: always
+    environment:
+      PGPOOL_SERVICE: {{ vip }}
+      PGPOOL_SERVICE_PORT: 9999
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: {{ postgres_pass }}

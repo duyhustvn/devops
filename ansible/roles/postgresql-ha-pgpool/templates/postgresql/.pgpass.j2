@@ -1,0 +1,8 @@
+{# Loops through all hosts in the all group. #}
+{% for host in groups['all'] %}
+{{ hostvars[host]['ansible_host'] }}:5432:replication:repl:{{ repl_pass }}
+{% endfor %}
+
+{% for host in groups['all'] %}
+{{ hostvars[host]['ansible_host'] }}:5432:postgres:postgres:{{ postgres_pass }}
+{% endfor %}

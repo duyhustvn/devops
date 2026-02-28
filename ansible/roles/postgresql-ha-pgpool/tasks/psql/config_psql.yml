@@ -1,0 +1,31 @@
+- name: Config PostgreSQL users
+  include_tasks: config_psql_user.yml
+  when: inventory_hostname == "node-db-01"
+
+- name: Config PostgreSQL pg_hba
+  include_tasks: config_psql_auth.yml
+
+  #- name: Create PostgreSQL extensions
+  #  include_tasks: create_psql_extensions.yml
+  #  when: inventory_hostname == "node-db-01"
+
+- name: Config PostgreSQL
+  template:
+    src: 'postgresql/postgresql.conf.j2'
+    dest: '{{ pg_config_dir }}/postgresql.conf'
+    mode: '0644'
+    owner: postgres
+    group: postgres
+  notify: Restart PostgreSQL
+  when: ansible_os_family == "Debian" or (ansible_os_family == "RedHat" and inventory_hostname == "node-db-01")
+
+# To allow repl user without specifying password for streaming replication and online recovery, and execute pg_rewind using postgresql
+# We create the .pgpass file in postgres user's home directory and change the permission to 600 on each PostgreSQL server. 
+# This file allows repl user and postgres user without providing a password for streaming replication and failover. 
+- name: Create .pgpass in postgres user's home for streaming replication and online recovery, and execute pg_rewind using postgresql
+  template:
+    src: 'postgresql/.pgpass.j2'
+    dest: '{{ pg_home_dir }}/.pgpass'
+    mode: '0600'
+    owner: postgres
+    group: postgres

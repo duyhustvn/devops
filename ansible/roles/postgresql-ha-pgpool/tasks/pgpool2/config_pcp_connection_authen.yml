@@ -1,0 +1,39 @@
+- name: Copy pcp.confg
+  copy:
+    src: pgpool2/pcp.conf.original
+    dest: '{{ pgpool_config_dir }}/pcp.conf'
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Copy pcp_auth script
+  template:
+    src: 'postgresql/pcp_auth.sh.j2'
+    dest: '{{ pg_config_dir }}/pcp_auth.sh'
+    mode: '0600'
+    owner: root
+    group: root
+
+- name: Run pcp_auth script
+  shell: |
+    bash pcp_auth.sh
+  args:
+    chdir: '{{ pg_config_dir }}'
+  register: result
+
+- name: Show running pcp_auth script result
+  debug:
+    var: result
+
+- name: Remove pcp_auth script
+  file:
+    path: '{{ pg_config_dir }}/pcp_auth.sh'
+    state: absent
+
+- name: Create .pcppass in postgres user's home directory
+  template:
+    src: 'pgpool2/.pcppass.j2'
+    dest: '{{ pg_home_dir }}/.pcppass'
+    mode: '0600'
+    owner: postgres
+    group: postgres

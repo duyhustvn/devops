@@ -1,0 +1,14 @@
+- block: # Client authentication Configuration
+    - name: Copy pgool_hba.conf to '{{ pgpool_config_dir }}/pool_hba.conf'
+      template:
+        src:  pgpool2/pool_hba.conf.j2
+        dest: '{{ pgpool_config_dir }}/pool_hba.conf'
+        mode: '0644'
+        owner: root
+        group: root
+
+
+    - name: Update pool_passwd
+      shell: |
+        sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u {{ item.user }} "{{ lookup('vars', item.user + '_pass') }}"
+      loop: "{{ pg_allowed_user_db }}"

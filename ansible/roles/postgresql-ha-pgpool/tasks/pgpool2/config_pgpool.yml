@@ -1,0 +1,196 @@
+---
+- name: Config PCP connection authentication
+  include_tasks: config_pcp_connection_authen.yml
+
+- name: Config pgpool_node_id
+  template:
+    src: 'pgpool2/pgpool_node_id.j2'
+    dest: '{{ pgpool_config_dir }}/pgpool_node_id'
+    mode: '0644'
+    owner: root
+    group: root
+
+- block: # Failover configuration
+    - name: Config failover.sh script
+      template:
+        src: pgpool2/failover.sh.j2
+        dest: '{{ pgpool_config_dir }}/failover.sh'
+        mode: '0744'
+        owner: postgres
+        group: postgres
+
+    - name: Config follow_primary script
+      template:
+        src: pgpool2/follow_primary.sh.j2
+        dest: '{{ pgpool_config_dir }}/follow_primary.sh'
+        mode: '0744'
+        owner: postgres
+        group: postgres
+
+- block: # Online Recovery configuration
+    - block:
+        - name: Config recovery_1st_stage script
+          template:
+            src: pgpool2/recovery_1st_stage.j2
+            dest: '{{ pg_data_dir }}/recovery_1st_stage'
+            mode: '0740'
+            owner: postgres
+            group: postgres
+
+        - name: Config pgpool_remote_start script
+          template:
+            src: pgpool2/pgpool_remote_start.j2
+            dest: '{{ pg_data_dir }}/pgpool_remote_start'
+            mode: '0740'
+            owner: postgres
+            group: postgres
+
+        - name: Allow postgres user to start postgresql@16-main.service without password
+          template:
+            src: sudoers.d/pgpool_remote_start.j2
+            dest: '/etc/sudoers.d/pgpool_remote_start'
+            mode: '0440'
+            owner: root
+            group: root
+
+    - block:
+      - name: Install pgpool_recovery
+        shell: |
+          PGPASSWORD='{{ postgres_pass }}' psql -h localhost -U postgres -d template1 -c "CREATE EXTENSION IF NOT EXISTS pgpool_recovery"
+        register: result
+      - name: Show result of running create extension pgpool_recovery
+        debug:
+          var: result
+      when: inventory_hostname == "node-db-01"
+
+- block: # Client authentication Configuration
+    - name: Copy pgool_hba.conf to '{{ pgpool_config_dir }}/pool_hba.conf'
+      template:
+        src:  pgpool2/pool_hba.conf.j2
+        dest: '{{ pgpool_config_dir }}/pool_hba.conf'
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Create .pgpoolkey
+      template:
+        src:  pgpool2/.pgpoolkey.j2
+        dest: '{{ pg_home_dir }}/.pgpoolkey'
+        mode: '0600'
+        owner: postgres
+        group: postgres
+
+    - name: Update pool_passwd with pgpool user
+      shell: |
+        sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u pgpool '{{ pgpool_pass }}'
+
+    - name: Update pool_passwd with postgres user
+      shell: |
+        sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u postgres '{{ postgres_pass }}'
+
+- block: # Watch dog
+  - name: Copy escalation.sh
+    template:
+      src:  pgpool2/escalation.sh.j2
+      dest: '{{ pgpool_config_dir }}/escaltion.sh'
+      mode: '0700'
+      owner: postgres
+      group: postgres
+  - name: Allow postgres user run ip, arping using sudo without password
+    template:
+      src:  sudoers.d/postgres_net_commands.j2
+      dest: '/etc/sudoers.d/postgres_net_commands'
+      mode: '0440'
+      owner: root
+      group: root
+
+- block: # Config log for Debian
+  - name: Create pgpool log file
+    file:
+      path: /var/log/pgpool.log
+      state: touch
+      owner: syslog
+      group: adm
+      mode: '0640'
+
+  - name: Configure rsyslog for pgpool
+    copy:
+      dest: /etc/rsyslog.d/99-pgpool.conf
+      content: |
+        local0.*    /var/log/pgpool.log
+      owner: root
+      group: root
+      mode: '0644'
+    notify: Restart rsyslog
+
+  - name: Configure logrotate for pgpool
+    copy:
+      dest: /etc/logrotate.d/pgpool
+      content: |
+        /var/log/pgpool.log {
+            weekly
+            missingok
+            rotate 7
+            compress
+            delaycompress
+            notifempty
+            create 640 syslog adm
+            sharedscripts
+            postrotate
+                systemctl reload rsyslog >/dev/null 2>&1 || true
+            endscript
+        }
+      owner: root
+      group: root
+      mode: '0644'
+  when: ansible_os_family == "Debian"
+
+- block: # Config log for Rocky Linux
+  - name: Create pgpool log file
+    file:
+      path: /var/log/pgpool_log/pgpool.log
+      state: touch
+      owner: postgres
+      group: postgres
+      mode: '0640'
+
+  - name: Configure rsyslog for pgpool
+    copy:
+      dest: /etc/rsyslog.d/99-pgpool.conf
+      content: |
+        local0.*    /var/log/pgpool_log/pgpool.log
+      owner: root
+      group: root
+      mode: '0644'
+    notify: Restart rsyslog
+
+  - name: Configure logrotate for pgpool
+    copy:
+      dest: /etc/logrotate.d/pgpool
+      content: |
+        /var/log/pgpool_log/pgpool.log {
+            weekly
+            missingok
+            rotate 7
+            compress
+            delaycompress
+            notifempty
+            create 640 postgres postgres
+            sharedscripts
+            postrotate
+                systemctl reload rsyslog >/dev/null 2>&1 || true
+            endscript
+        }
+      owner: root
+      group: root
+      mode: '0644'
+  when: ansible_os_family == "RedHat"
+
+- name: Config Pgpool
+  template:
+    src: pgpool2/pgpool.conf.j2
+    dest: '{{ pgpool_config_dir }}/pgpool.conf'
+    mode: '0640'
+    owner: root
+    group: postgres
+  notify: Restart PgPool

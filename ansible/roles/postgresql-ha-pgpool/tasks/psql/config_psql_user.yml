@@ -1,0 +1,24 @@
+- name: Copy config_psql_user script to master server
+  template:
+    src: 'postgresql/config_psql_user.sh.j2'
+    dest: '{{ pg_config_dir }}/config_psql_user.sh'
+    mode: '0644'
+    owner: postgres
+    group: postgres
+
+- name: Run config_psql_user script
+  shell: |
+    bash config_psql_user.sh
+  args:
+    chdir: '{{ pg_config_dir }}'
+  register: result
+
+- name: Show running config_psql_user script
+  debug:
+    var: result
+
+- name: Remove running config_psql_user script
+  file:
+    path: '{{ pg_config_dir }}/config_psql_user.sh'
+    state: absent
+

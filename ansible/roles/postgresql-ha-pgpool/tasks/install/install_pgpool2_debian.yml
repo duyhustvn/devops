@@ -1,0 +1,16 @@
+---
+
+- name: Ensure prerequisite packages are installed
+  apt:
+    name:
+      - libpq-dev
+    state: present
+    update_cache: yes
+
+- name: Install Pgpool2
+  apt:
+    name:
+      - pgpool2
+      - postgresql-{{ postgresql_version }}-pgpool2
+      - iputils-arping
+    state: present

@@ -1,0 +1,44 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for roles/postgresql-ha-pgpool2
+
+- name: Restart rsyslog
+  become: true
+  systemd:
+    name: rsyslog
+    state: restarted
+
+- name: Restart PostgreSQL Debian
+  become: true
+  systemd:
+    name: postgresql@{{ postgresql_version }}-main.service
+    state: restarted
+  when: ansible_os_family == "Debian"
+  listen: Restart PostgreSQL
+
+- name: Restart PostgreSQL RedHat
+  become: true
+  shell:
+    cmd: "sudo -i -u postgres bash -c '{{ pg_lib_dir }}/bin/pg_ctl restart'"
+  when: ansible_os_family == "RedHat"
+  listen: Restart PostgreSQL
+
+- name: Restart PgPool Debian
+  become: true
+  systemd:
+    name: pgpool2.service
+    state: restarted
+  when: ansible_os_family == "Debian"
+  listen: Restart PgPool
+
+- name: Restart PgPool RedHat
+  become: true
+  shell:
+    cmd: "sudo systemctl restart pgpool.service"
+  when: ansible_os_family == "RedHat"
+  listen: Restart PgPool
+
+- name: Clean DNF cache
+  command:
+    cmd: dnf clean all
+  changed_when: false

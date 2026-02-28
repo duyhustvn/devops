@@ -1,0 +1,8 @@
+- name: Install pg_stat_statements
+  shell: |
+    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"
+  register: result
+
+- name: Show result of running create extension pg_stat_statements
+  debug:
+    var: result

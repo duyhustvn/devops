@@ -1,0 +1,6 @@
+#!/bin/bash
+
+sudo -u postgres psql -c "CREATE ROLE pgpool WITH LOGIN PASSWORD '{{ pgpool_pass }}'"
+sudo -u postgres psql -c "CREATE ROLE repl   WITH REPLICATION LOGIN PASSWORD '{{ repl_pass }}'"
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '{{ postgres_pass }}'"
+sudo -u postgres psql -c "GRANT pg_monitor TO pgpool"

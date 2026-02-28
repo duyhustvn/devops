@@ -1,0 +1,26 @@
+-- Connect to database
+\c :db
+
+-- Create user that can login with password
+-- CREATE USER :username WITH LOGIN PASSWORD ':password';
+
+-- Grant CONNECT privilege
+GRANT CONNECT ON DATABASE :db TO :username;
+
+-- Grant USAGE privilege on schema public
+GRANT USAGE ON SCHEMA public TO :username;
+
+-- grant privilege on all current tables in schema public
+-- example: GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO :username;
+GRANT :table_privilege ON ALL TABLES IN SCHEMA public TO :username;
+
+-- grant privilege on feature tables in schema public
+-- example: ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO :username;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT :table_privilege ON TABLES TO :username;
+
+-- grant privilege on all sequences in schema public
+-- example: GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :username;
+GRANT :sequence_privilege ON ALL SEQUENCES IN SCHEMA public TO :username;
+-- grant privilege on feature sequences in schema public
+-- example: ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO :username;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT :sequence_privilege ON SEQUENCES TO :username;

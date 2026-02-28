@@ -1,0 +1,27 @@
+- name: Copy grant_user.sql to remote server
+  template:
+    src: postgresql/grant_user.sql.j2
+    dest: /tmp/grant_user.sql
+
+- name: Create user and grant privilege
+  shell: |
+    psql -U postgres -d "$DBNAME" \
+      -v db="$DBNAME" \
+      -v username="$APPUSER" \
+      -v password="$APPPASS" \
+      -v table_privilege="$TABLE_PRIVILEGE" \
+      -v sequence_privilege="$SEQUENCE_PRIVILEGE" \
+      -f /tmp/grant_user.sql
+  environment:
+    PGPASSWORD: "{{ postgres_pass }}"
+    DBNAME: "{{ item.db }}"
+    APPUSER: "{{ item.user }}"
+    APPPASS: "{{ lookup('vars', item.user + '_pass') }}"
+    TABLE_PRIVILEGE: "{{ item.table_privilege }}"
+    SEQUENCE_PRIVILEGE: "{{ item.sequence_privilege }}"
+  loop: "{{ pg_allowed_user_db }}"
+  register: result
+
+- name: Show result
+  debug:
+    var: result

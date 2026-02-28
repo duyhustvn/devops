@@ -1,0 +1,51 @@
+---
+- name: Ensure '{{ pg_home_dir }}/.ssh' exists for postgres
+  file:
+    path: '{{ pg_home_dir }}/.ssh'
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'
+
+- name: Generate an RSA keypair for pgpool
+  openssh_keypair:
+    path: '{{ pg_home_dir }}/.ssh/{{ ssh_key_file }}'
+    type: rsa
+    size: 2048
+    owner: postgres
+    group: postgres
+    mode: '0600'
+    # passphrase: "{{ ssh_key_file_secret }}" # not use passphrase
+    force: true
+    comment: "pgpool {{ inventory_hostname }}"
+
+- name: Slurp the public key into a variable
+  slurp:
+    path: "{{ pg_home_dir }}/.ssh/{{ ssh_key_file }}.pub"
+  register: slurped
+
+- name: Store decoded public key in hostvars
+  set_fact:
+    pgpool_pubkey: "{{ slurped.content | b64decode }}"
+
+- name: Remove authorized_keys of user postgres first
+  file:
+    path: "{{ pg_home_dir }}/.ssh/authorized_keys"
+    state: absent
+
+- name: Ensure authorized_keys of user postgres exists
+  file:
+    path: "{{ pg_home_dir }}/.ssh/authorized_keys"
+    state: touch
+    owner: postgres
+    group: postgres
+    mode: '0600'
+
+- name: Add each host’s pgpool public key to authorized_keys
+  authorized_key:
+    user: postgres
+    key: "{{ hostvars[item].pgpool_pubkey }}"
+    state: present
+  loop: "{{ groups['all'] }}"
+  loop_control:
+    label: "{{ item }}"

@@ -1,0 +1,22 @@
+- name: Recover standby node 1
+  expect:
+    command: pcp_recovery_node -h {{ vip }} -p 9898 -U pgpool -n 1 -W
+    responses:
+      Password: "{{ pcp_pass }}\n"
+  register: result
+
+- name: Show result
+  debug:
+    var: result.stdout
+
+
+- name: Recover standby node 2
+  expect:
+    command: pcp_recovery_node -h {{ vip }} -p 9898 -U pgpool -n 2 -W
+    responses:
+      Password: "{{ pcp_pass }}\n"
+  register: result
+
+- name: Show result
+  debug:
+    var: result.stdout

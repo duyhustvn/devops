@@ -1,0 +1,3 @@
+postgres ALL=(root) NOPASSWD: /bin/systemctl start postgresql@{{ postgresql_version }}-main.service
+postgres ALL=(root) NOPASSWD: /bin/systemctl restart postgresql@{{ postgresql_version }}-main.service
+postgres ALL=(root) NOPASSWD: /bin/systemctl stop postgresql@{{ postgresql_version }}-main.service

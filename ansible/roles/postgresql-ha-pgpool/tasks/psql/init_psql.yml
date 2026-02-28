@@ -1,0 +1,20 @@
+---
+
+- name: Init PostgreSQL database
+  shell: |
+    sudo -i -u postgres bash -c "{{ pg_lib_dir }}/bin/initdb"
+  register: result
+
+- name: Show result of running initdb
+  debug:
+    var: result
+
+- name: Start PostgreSQL 
+  shell: |
+    sudo -i -u postgres bash -c "{{ pg_lib_dir }}/bin/pg_ctl start"
+  register: result
+
+- name: Show result of pg_ctl start
+  debug:
+    var: result
+ 

@@ -1,0 +1,49 @@
+vip: 192.168.56.120
+
+pgpool_version: 4.6
+postgresql_version: 16
+
+pg_data_dir: /var/lib/pgsql/16/data
+pg_config_dir: /var/lib/pgsql/16/data
+pg_home_dir: /var/lib/pgsql
+pg_lib_dir: /usr/pgsql-16
+
+pgpool_config_dir: /etc/pgpool-II
+pgpool_path: /bin
+
+pcp_username: pgpool
+device_interface: enp0s8
+pgpool_log_dir: /var/log
+
+arping_path: /usr/bin
+if_cmd_path: /sbin
+
+pg_allowed_ips:
+  - 192.168.56.0/24
+
+proxy: "" # if not set proxy, keep it empty with quote, don't remove the quote
+
+# postgresql config 
+# references: 
+#   - pgtune.leopard.in.ua 
+#   - pgconfig.org
+#   - pgconfigurator.cybertec.at
+pg_conf_max_connection: 200
+pg_conf_shared_buffers: 1GB
+pg_conf_effective_cache_size: 3GB
+pg_conf_maintenance_work_mem: 256MB
+pg_conf_checkpoint_completion_target: 0.9
+pg_conf_wal_buffers: 16MB
+pg_conf_default_statistics_target: 100
+pg_conf_random_page_cost: 1.1
+pg_conf_effective_io_concurrency: 200
+pg_conf_work_mem: 5140kB
+pg_conf_huge_pages: off
+pg_conf_min_wal_size: 1GB
+pg_conf_max_wal_size: 4GB
+pg_conf_max_worker_processes: 4
+pg_conf_max_parallel_workers_per_gather: 2
+pg_conf_max_parallel_workers: 4
+pg_conf_max_parallel_maintenance_workers: 2
+pg_conf_ssl: off
+pg_conf_include_dir: '' # keep it empty if you dont wanna set it

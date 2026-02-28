@@ -1,0 +1,36 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/postgresql-ha-pgpool2
+
+# APT Repo
+pgdg_key_url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+pgdg_key_dest: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+pgdg_repo_file: /etc/apt/sources.list.d/pgdg.list
+pgdg_repo: https://apt.postgresql.org/pub/repos/apt
+
+# Postgresql
+postgresql_version: 16
+pg_data_dir: /u01/data/postgresql/{{ postgresql_version }}/main
+pg_config_dir: /etc/postgresql/{{ postgresql_version }}/main
+pg_home_dir: /var/lib/postgresql
+pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
+
+# Pgpool-II
+pgpool_version: 4.6
+pgpool_config_dir: /etc/pgpool2
+pgpool_path: /usr/sbin
+pgpool_log_dir: /var/log
+
+arping_path: /usr/bin
+if_cmd_path: /sbin
+
+pgpool_conf_num_init_children: 32
+pgpool_conf_max_pool: 4
+
+ssh_key_file: id_rsa_pgpool
+
+proxy: ''
+
+cidr_prefix: 24
+
+exporter_deploy_dir: '/u01/exporter'

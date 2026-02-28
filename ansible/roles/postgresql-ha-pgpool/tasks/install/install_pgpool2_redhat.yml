@@ -1,0 +1,23 @@
+---
+
+- name: Exclude pgpool from PostgreSQL repositories
+  copy:
+    src: repo/redhat/pgdg-redhat-all.repo 
+    dest: /etc/yum.repos.d/pgdg-redhat-all.repo
+    mode: '0644'
+    owner: root
+    group: root
+  notify:
+    - Clean DNF cache
+
+- name: Install Pgpool-II YUM repository
+  dnf:
+    name: https://www.pgpool.net/yum/rpms/{{ pgpool_version }}/redhat/rhel-9-x86_64/pgpool-II-release-{{ pgpool_version }}-1.noarch.rpm
+    state: present
+    disable_gpg_check: true
+
+- name: Install Pgpool-II for PostgreSQL {{ postgresql_version }}
+  dnf:
+    name: 'pgpool-II-pg{{ postgresql_version }}-*'
+    state: present
+    enablerepo: crb

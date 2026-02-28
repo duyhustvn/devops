@@ -1,0 +1,23 @@
+---
+
+- name: Install PostgreSQL YUM repository
+  dnf:
+    name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    state: present
+    disable_gpg_check: true
+
+- name: Disable postgresql module
+  command:
+    cmd: dnf -qy module disable postgresql
+  changed_when: false
+
+- name: Install PostgreSQL {{ postgresql_version }} server
+  dnf:
+    name: postgresql{{ postgresql_version }}-server
+    state: present
+
+- name: Install contrib package # pg_stat_statements
+  dnf:
+    name: "postgresql{{ postgresql_version }}-contrib"
+    state: present
+

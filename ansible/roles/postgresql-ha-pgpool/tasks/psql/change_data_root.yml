@@ -1,0 +1,30 @@
+- block:
+  - name: Create new data directory at {{ pg_data_dir }}
+    file:
+      path: '{{ pg_data_dir }}'
+      state: directory
+      owner: postgres
+      group: postgres
+      mode: '0700'
+
+  - name: Stop postgresql service
+    systemd:
+      name: postgresql@{{ postgresql_version }}-main.service
+      state: stopped
+
+  - name: Copy data to new location
+    shell: |
+      rsync -av /var/lib/postgresql/{{ postgresql_version }}/main/ {{ pg_data_dir }}
+    args:
+      executable: /bin/bash
+
+  - name: Update postgresql configuration
+    lineinfile:
+      path: '{{ pg_config_dir }}/postgresql.conf'
+      regexp: '^data_directory ='
+      line: "data_directory = '{{ pg_data_dir }}'"
+  
+  - name: Start postgresql service
+    systemd:
+      name: postgresql@{{ postgresql_version }}-main.service
+      state: started

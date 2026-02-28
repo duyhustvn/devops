@@ -1,0 +1,40 @@
+---
+
+- name: Ensure prerequisite packages are installed
+  apt:
+    name:
+      - curl
+      - ca-certificates
+    state: present
+    update_cache: yes
+
+- name: Create directory for PostgreSQL repository key
+  file:
+    path: "{{ pgdg_key_dest | dirname }}"
+    state: directory
+    mode: '0755'
+
+- name: Download PostgreSQL repository signing key
+  get_url:
+    url: "{{ pgdg_key_url }}"
+    dest: "{{ pgdg_key_dest }}"
+    mode: '0644'
+  environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+
+- name: Add PostgreSQL APT repository
+  apt_repository:
+    filename: pgdg
+    repo: >-
+      deb [signed-by={{ pgdg_key_dest }}]
+      {{ pgdg_repo }}
+      {{ ansible_distribution_release }}-pgdg main
+    state: present
+
+- name: Update APT cache
+  apt:
+    update_cache: yes
+
+- name: Install PostgreSQL {{ postgresql_version }}
+  apt:
+    name: postgresql-{{ postgresql_version }}
+    state: present

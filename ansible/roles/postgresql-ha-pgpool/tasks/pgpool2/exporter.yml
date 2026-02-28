@@ -1,0 +1,24 @@
+- block:
+  - name: Create deployment folder
+    file:
+      path: '{{ exporter_deploy_dir }}'
+      state: directory
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: Copy doker-compose file into remote server
+    template:
+      src: 'pgpool2/exporter/docker-compose.yml.j2'
+      dest: '{{ exporter_deploy_dir }}/docker-compose.yml'
+      owner: root
+      backup: yes
+  tags: [ config_exporter ]
+
+- name: Deploy pgpool exporter
+  shell: |
+    docker compose up -d
+  args:
+    chdir: '{{ exporter_deploy_dir }}'
+  register: result
+  tags: [ deploy_exporter ]
