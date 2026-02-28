@@ -1,0 +1,34 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/helm
+
+- block: # Download helm if not exists
+    - name: Check if Helm is downloaded in controller node
+      delegate_to: localhost
+      stat:
+        path: "{{ role_path }}/files/helm-{{helm_version}}-linux-amd64.tar.gz"
+      register: helm_local
+    - name: Download helm if not exists
+      delegate_to: localhost
+      get_url:
+        url: https://get.helm.sh/helm-{{helm_version}}-linux-amd64.tar.gz
+        dest: "{{ role_path }}/files/helm-{{helm_version}}-linux-amd64.tar.gz"
+        mode: "0644"
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+      when: not helm_local.stat.exists
+  become: false
+  tags: [ download_helm ]
+
+- block: # Copy helm to controlled node and install
+  - name: Copy helm to controlled node
+    copy:
+      src: "helm-{{helm_version}}-linux-amd64.tar.gz"
+      dest: "/tmp/helm-{{helm_version}}-linux-amd64.tar.gz"
+      mode: '0755'
+  - name: Extract helm
+    unarchive:
+      src: "/tmp/helm-{{helm_version}}-linux-amd64.tar.gz"
+      dest: /usr/local/bin
+      remote_src: yes
+      extra_opts: [--strip-components=1]
+  tags: [ install_helm ]
