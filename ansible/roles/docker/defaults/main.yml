@@ -1,0 +1,9 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/docker
+
+docker_log_max_size: 10m
+docker_log_max_file: 3
+docker_data_root: '/u01/data/docker'
+proxy: ''
+

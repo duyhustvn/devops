@@ -1,0 +1,14 @@
+influxdb_database: telegraf
+influxdb_username: influx
+
+outputs:
+  - name: influxdb
+    urls:
+      - http://192.168.56.141:8086
+    database: "{{ influxdb_database }}"
+    username: "{{ influxdb_username }}"
+
+prometheus:
+  pgpool:
+    targets:
+      - 192.168.56.110:9719

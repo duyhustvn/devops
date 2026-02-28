@@ -1,0 +1,115 @@
+- block:
+    - name: Create directory for Docker daemon config
+      file:
+        path: /etc/docker
+        state: directory
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Set docker root data
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "data-root": "{{ docker_data_root }}",
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "{{ docker_log_max_size }}",
+              "max-file": "{{ docker_log_max_file }}"
+            }
+          }
+      when: docker_data_root is defined and docker_data_root != ""
+
+- block:
+    - name: Install requirement packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Create directory for keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Docker GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: yes
+      environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
+
+    - name: Set appropriate permissions on the GPG key
+      file:
+        path: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Get dpkg architecture
+      shell: dpkg --print-architecture
+      register: dpkg_arch
+
+    - name: Add Docker repository to APT sources
+      apt_repository:
+        repo: "deb [arch={{ dpkg_arch.stdout }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release | lower }} stable"
+        state: present
+        filename: docker
+
+    - name: Update apt
+      apt:
+        update_cache: yes
+
+    - name: Install docker docker-compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: latest
+
+    - name: Create systemd drop-in directory for Docker
+      file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Reload systemd manager configuration
+      command: systemctl daemon-reload
+
+    - name: Restart Docker to apply proxy config
+      service:
+        name: docker
+        state: restarted
+        enabled: yes
+
+- block:
+    - name: Set environment variables for Docker proxy
+      copy:
+        dest: /etc/systemd/system/docker.service.d/proxy.conf
+        content: |
+          [Service]
+          Environment="HTTP_PROXY={{ proxy }}"
+          Environment="HTTPS_PROXY={{ proxy }}"
+          Environment="NO_PROXY={{ no_proxy }}"
+      when: proxy is defined and proxy != ""
+
+    - name: Reload systemd manager configuration
+      command: systemctl daemon-reload
+
+    - name: Restart Docker to apply proxy config
+      service:
+        name: docker
+        state: restarted
+        enabled: yes
+

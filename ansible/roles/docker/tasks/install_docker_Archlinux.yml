@@ -1,0 +1,62 @@
+- block:
+    - name: Create directory for Docker daemon config
+      file:
+        path: /etc/docker
+        state: directory
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Set docker root data
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "data-root": "{{ docker_data_root }}",
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "{{ docker_log_max_size }}",
+              "max-file": "{{ docker_log_max_file }}"
+            }
+          }
+      when: docker_data_root is defined and docker_data_root != ""
+
+- block:
+    - name: Update pacman package cache
+      community.general.pacman:
+        update_cache: true
+      # This task runs "pacman -Sy" as a separate step
+
+    - name: Install Docker package
+      community.general.pacman:
+        name: docker
+        state: present
+      # This installs the 'docker' package from the Arch repositories
+
+    - name: Ensure Docker service is enabled and started
+      ansible.builtin.systemd_service:
+        name: docker.service
+        state: started
+        enabled: true
+      # This is equivalent to 'systemctl enable --now docker.service'
+
+# - block:
+#     - name: Set environment variables for Docker proxy
+#       copy:
+#         dest: /etc/systemd/system/docker.service.d/proxy.conf
+#         content: |
+#           [Service]
+#           Environment="HTTP_PROXY={{ proxy }}"
+#           Environment="HTTPS_PROXY={{ proxy }}"
+#           Environment="NO_PROXY={{ no_proxy }}"
+#       when: proxy is defined and proxy != ""
+# 
+#     - name: Reload systemd manager configuration
+#       command: systemctl daemon-reload
+# 
+#     - name: Restart Docker to apply proxy config
+#       service:
+#         name: docker
+#         state: restarted
+#         enabled: yes
+
