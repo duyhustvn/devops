@@ -1,0 +1,77 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: eg
+spec:
+  gatewayClassName: eg
+  infrastructure: # refer to EnvoyProxy custom-proxy-config
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: custom-proxy-config
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: custom-proxy-config
+  labels:
+    service: envoy
+spec:
+  extraArgs:
+    - "--base-id 2"
+  provider:
+    type: Kubernetes
+    kubernetes:
+      useListenerPortAsContainerPort: true
+      envoyService:
+        type: ClusterIP
+      envoyDaemonSet:
+        pod:
+          labels:
+            host-network: "true"
+          tolerations: []
+          nodeSelector: {}
+          volumes:
+            - name: envoy-access-log
+              hostPath:
+                path: /var/log/envoy
+                type: DirectoryOrCreate # create directory if not exists
+        container:
+          image: envoyproxy/envoy-distroless:v1.34.4
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              add: ["NET_BIND_SERVICE"]
+          volumeMounts:
+            - name: "envoy-access-log"
+              mountPath: "/var/log/envoy"
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              template:
+                spec:
+                  hostNetwork: true
+                  dnsPolicy: ClusterFirstWithHostNet
+  telemetry:
+    accessLog:
+      settings:
+        - type: Route #  the log is produced per request, based on route-level traffic.
+          sinks: # sinks are the destination for access log records 
+            - type: File
+              file:
+                path: "/var/log/envoy/access.log"
