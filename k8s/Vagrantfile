@@ -1,0 +1,52 @@
+Vagrant.configure("2") do |config|
+  # Define VM configurations
+  vms = [
+    { gui_display_name: "k8s_master_1", name: "k8smaster1", hostname: "k8s-master-1", ip: "192.168.56.101" },
+    { gui_display_name: "k8s_master_2", name: "k8smaster2", hostname: "k8s-master-2", ip: "192.168.56.102" },
+    { gui_display_name: "k8s_master_3", name: "k8smaster3", hostname: "k8s-master-3", ip: "192.168.56.103" },
+    { gui_display_name: "k8s_worker_1", name: "k8sworker1", hostname: "k8s-worker-1", ip: "192.168.56.104" },
+    { gui_display_name: "k8s_worker_2", name: "k8sworker2", hostname: "k8s-worker-2", ip: "192.168.56.105" },
+    { gui_display_name: "k8s_worker_3", name: "k8sworker3", hostname: "k8s-worker-3", ip: "192.168.56.106" }
+  ]
+
+  vms.each do |vm|
+
+    config.vm.define vm[:name] do |vm_config|
+      vm_config.vm.box = "ubuntu/jammy64" # Specify the box you want to use
+      # vm_config.vm.synced_folder "./rke2-artifacts", "/root/rke2-artifacts", type: "rsync"
+      #
+      # host name
+      # vm_config.vm.hostname = vm[:hostname]
+      # Fixed IP addresses for private network
+      vm_config.vm.network "private_network", ip: vm[:ip]
+
+      vm_config.vm.provider "virtualbox" do |vb|
+        vb.name = vm[:gui_display_name]
+        vb.memory = "4096"
+        vb.cpus = 4
+      end
+
+      # Build the hosts string
+      # hosts_entries = vms.map { |other_vm| "#{other_vm[:ip]} #{other_vm[:hostname]}" unless other_vm[:hostname] == vm[:hostname] }.compact.join("\n")
+      hosts_entries = vms.map { |other_vm| "#{other_vm[:ip]} #{other_vm[:hostname]}" }.join("\n")
+
+
+      # Provision the VM with the hosts entries
+      vm_config.vm.provision "shell", inline: <<-SHELL
+        # Set hostname
+        hostnamectl set-hostname #{vm[:hostname]}
+        echo "127.0.0.1 #{vm[:hostname]}" >> /etc/hosts
+        echo "#{hosts_entries}" >> /etc/hosts
+
+        # Add SSH public key to authorized keys
+        # Remember to generate your own SSH key pair 
+        echo "#{File.read(File.expand_path('~/.ssh/id_ed25519.pub'))}" >> /home/vagrant/.ssh/authorized_keys
+
+        # Change permission of authorized key
+        chmod 600 /home/vagrant/.ssh/authorized_keys
+        chown vagrant:vagrant /home/vagrant/.ssh/authorized_keys
+      SHELL
+
+    end
+  end
+end
