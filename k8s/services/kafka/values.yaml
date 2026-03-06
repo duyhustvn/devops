@@ -1,0 +1,88 @@
+image:
+  registry: docker.io
+  repository: bitnami/kafka
+  tag: 3.7.0-debian-12-r6
+  debug: true
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+commonLabels:
+  service: kafka
+  release: kafka
+listeners:
+  client:
+    containerPort: 9092
+    protocol: SASL_PLAINTEXT
+    name: CLIENT
+    sslClientAuth: none
+  controller:
+    name: CONTROLLER
+    containerPort: 9093
+    protocol: SASL_PLAINTEXT
+    sslClientAuth: none
+  interbroker:
+    containerPort: 9094
+    protocol: SASL_PLAINTEXT
+    name: INTERNAL
+    sslClientAuth: none
+  external:
+    containerPort: 9095
+    protocol: SASL_PLAINTEXT
+    name: EXTERNAL
+    sslClientAuth: none
+sasl:
+  enabledMechanisms: PLAIN,SCRAM-SHA-256,SCRAM-SHA-512
+  interBrokerMechanism: PLAIN
+  controllerMechanism: PLAIN
+  interbroker:
+    user: inter_broker_user
+  controller:
+    user: controller_user
+  client:
+    users:
+      - user
+  # existingSecret: kafka-credentials
+kraft:
+  enabled: true
+allowPlaintextListener: false
+controller:
+  replicaCount: 3
+
+externalAccess:
+  enabled: true
+  autoDiscovery:
+    enabled: false
+  controller:
+    service:
+      type: LoadBalancer
+      ports:
+        external: 9095
+      loadBalancerIPs:
+        - 192.168.56.100
+        - 192.168.56.100
+        - 192.168.56.100
+  broker:
+    service:
+      type: LoadBalancer
+    ports:
+      external: 9095
+    loadBalancerIPs:
+        - 192.168.56.100
+        - 192.168.56.100
+        - 192.168.56.100
+networkPolicy:
+  enable: true
+  allowExternal: true
+  allowExternalEgress: true
+serviceAccount:
+  create: true
+rbac:
+  create: true
+readinessProbe:
+  enabled: true
+livenessProbe:
+  enabled: true
+persistence:
+  enabled: true
+  size: 10Gi
+  annotations:
+    helm.sh/resource-policy: keep
