@@ -1,0 +1,24 @@
+# ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sso
+  annotations:
+    "app.kubernetes.io/managed-by": "helm"
+    "meta.helm.sh/release-name": "sso"
+spec:
+  parentRefs:
+    - name: eg
+  hostnames:
+    - "example.com"
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: sso
+          port: 8000
+          weight: 1
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
