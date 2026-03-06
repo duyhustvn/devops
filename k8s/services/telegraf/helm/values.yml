@@ -1,0 +1,136 @@
+replicaCount: 1
+podLabels: 
+  app: telegraf
+service:
+  enabled: true
+  type: ClusterIP
+serviceAccount:
+  create: true
+
+rbac:
+  create: true # role
+  clusterWide: true # clusterrole
+  rules: 
+    - apiGroups:
+        - "" # core API groups 
+      resources:
+        - nodes
+        - nodes/proxy
+        - nodes/metrics
+        - nodes/stats
+        - services
+        - endpoints
+        - pods
+        - ingresses
+        - configmaps
+      verbs:
+        - get
+        - list
+        - watch
+
+    - apiGroups:
+        - "extensions" 
+      resources:
+        - ingresses/status
+        - ingresses
+      verbs:
+        - get
+        - list
+        - watch
+    - nonResourceURLs:
+        - "/metrics"
+      verbs:
+        - get
+
+env:
+  - name: NODE_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP  # <--- Node's physical IP
+
+  - name: INFLUXDB_IP
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_IP
+  - name: INFLUXDB_PORT
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_PORT
+  - name: INFLUXDB_DATABASE
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_DATABASE
+  - name: INFLUXDB_USERNAME
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_USERNAME
+  - name: INFLUXDB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: influxdb-secret
+        key: INFLUXDB_PASSWORD
+    
+config:
+  global_tags:
+    customer: "test"
+    environment: "test"
+    project: "devops"
+    ip_addr: "$NODE_IP"
+  agent:
+    interval: "10s"
+    round_interval: true
+    metric_batch_size: 1000
+    metric_buffer_limit: 10000
+    flush_buffer_when_full: true
+    collection_jitter: "0s"
+    flush_interval: "10s"
+    flush_jitter: "0s"
+    precision: ""
+    debug: true
+    quiet: false
+    hostname: "$NODE_IP"
+    omit_hostname: false
+  inputs:
+    # https://github.com/influxdata/telegraf/tree/master/plugins/inputs/kubernetes#kubernetes-input-plugin
+    - kubernetes:
+        url: ""
+        bearer_token: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        insecure_skip_verify: true
+
+    # https://github.com/influxdata/telegraf/tree/master/plugins/inputs/kube_inventory 
+    - kube_inventory:
+        namespace: ""
+        bearer_token: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    
+    - prometheus:
+        # https://github.com/influxdata/telegraf/tree/master/plugins/inputs/prometheus#configuration
+        metric_version: 1
+        # Scrape Pods
+        monitor_kubernetes_pods: true
+        monitor_kubernetes_pods_method: "annotations"
+
+  outputs:
+    # - file: 
+    #   # Enabled it for test only
+    #   - files: ["/var/log/telegraf/metrics.out"]
+    #     data_format: "influx"
+    - influxdb:
+        urls:
+          - "http://$INFLUXDB_IP:$INFLUXDB_PORT"
+        database: "$INFLUXDB_DATABASE"
+        precision: "s"
+        timeout: "10s"
+        username: "$INFLUXDB_USERNAME"
+        password: "$INFLUXDB_PASSWORD"
+        insecure_skip_verify: true
+
+metrics:
+  health:
+    enabled: true
+  collect_memstats: false
+  internal:
+    enabled: false
