@@ -1,0 +1,22 @@
+architecture: replicaset
+replicaCount: 3
+replicaSetName: mongors
+
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+
+arbiter:
+  enabled: false
+
+resources: {}
+
+metrics:
+  enabled: true
+
+podAnnotations:
+  # for telegraf prometheus input to scape metrics
+  prometheus.io/port: "9216"
+  prometheus.io/scrape: "true"
+
+
