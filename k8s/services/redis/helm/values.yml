@@ -1,0 +1,38 @@
+image:
+  registry: registry-1.docker.io
+  repository: bitnami/redis
+  tag: latest
+
+architecture: replication
+sentinel:
+  enabled: true
+  image:
+    registry: registry-1.docker.io
+    repository: bitnami/redis-sentinel
+    tag: latest
+  containerPorts:
+    sentinel: 26379
+
+auth:
+  enabled: true
+  existingSecret: redis-secret
+
+replica:
+  kind: StatefulSet
+  replicaCount: 3
+  persistence:
+    enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 8Gi
+  persistentVolumeClaimRetentionPolicy:
+    enabled: true
+    whenScaled: Retain
+    whenDeleted: Retain
+  nodeSelector:
+    db: "true"
+  tolerations:
+    - key: db
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
