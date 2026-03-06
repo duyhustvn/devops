@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: network-tools
+  labels:
+    app: network-tools 
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: network-tools
+  template:
+    metadata:
+      labels:
+        app: network-tools
+    spec:
+      containers:
+        - name: network-tools
+          image: duyle95/network-tools
+          imagePullPolicy: Always
+          command: ["/bin/sh"]
+          stdin: true
+          tty: true
+
