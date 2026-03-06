@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubernetes-dashboard-ingress
+  namespace: kubernetes-dashboard
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"  # Enable HTTP to HTTPS redirection
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS" # Communicate with the service over HTTPS
+    nginx.ingress.kubernetes.io/secure-backends: "true"  # Ensure secure communication with backend
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  tls:
+    - hosts:
+      - changeme.vn
+      secretName: changeme-tls
+  rules:
+    - host: changeme.vn
+      http:
+        paths:
+          - path: /k8s-dashboard(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kubernetes-dashboard-kong-proxy
+                port:
+                  number: 443

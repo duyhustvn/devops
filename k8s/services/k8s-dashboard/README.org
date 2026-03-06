@@ -1,0 +1,12 @@
+* To access dashborad
+** Method 1: Port forward
+#+begin_src shell
+kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443
+#+end_src
+Access the UI at https://localhost:8443
+** Method 2: Using ingress
+Access https://changeme.vn/k8s-dashboard
+* Get bear token
+#+begin_src shell
+kubectl get secret admin-user -n kubernetes-dashboard -o jsonpath={".data.token"} | base64 -d
+#+end_src
