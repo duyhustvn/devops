@@ -45,7 +45,7 @@
 - block: # Install and config keepalived for master only if have
   - name: Install and config keepalived 
     include_tasks: keepalived.yml
-  when: inventory_hostname in groups['rke2-master'] and vip is defined and vip != ''
+  when: inventory_hostname in groups['master'] and vip is defined and vip != ''
   tags: [ install_keepalived ]
 
 - block:
@@ -67,7 +67,7 @@
 
 - name: Start Rke2 service
   systemd:
-    name: "{{ 'rke2-server' if inventory_hostname in groups['rke2-master'] else 'rke2-agent' }}"
+    name: "{{ 'rke2-server' if inventory_hostname in groups['master'] else 'rke2-agent' }}"
     state: started
     enabled: yes
   tags: [ start_rke2 ]

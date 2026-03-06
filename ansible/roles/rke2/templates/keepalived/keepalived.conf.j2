@@ -2,7 +2,7 @@ vrrp_instance VI_1 {
     state MASTER
     interface {{ vip_interface }}
     virtual_router_id 51
-    priority {% if inventory_hostname == groups['rke2-master'][0] %}100{% else %}90{% endif %}
+    priority {% if inventory_hostname == groups['master'][0] %}100{% else %}90{% endif %}
     advert_int 1
     authentication {
         auth_type PASS

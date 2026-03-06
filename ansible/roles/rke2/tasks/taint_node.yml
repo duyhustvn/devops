@@ -1,0 +1,21 @@
+- block:
+    - name: Taint nodes
+      shell: |
+        kubectl taint node {{ hostvars[item].node_name }} {{ hostvars[item].taints }} --overwrite
+      when: 
+        - hostvars[item].taints is defined 
+        - hostvars[item].taints != '' 
+        - inventory_hostname == "master-01"
+      loop: "{{ groups['rke2'] }}"
+
+    - name: Get taint node
+      shell: |
+        kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
+      when: inventory_hostname == "master-01"
+      register: taint_output
+      changed_when: false # Prevents this read-only task from showing as "changed" in Ansible logs
+
+    - name: Display node taints
+      debug:
+        var: taint_output.stdout_lines
+      when: inventory_hostname == "master-01"

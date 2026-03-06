@@ -3,7 +3,7 @@
 # defaults file for roles/k8s
 
 proxy: ""
-rke2_server_url: "https://{{ vip if vip is defined and vip != '' else hostvars[group['rke2-master'][0]].ansible_host }}:9345"
+rke2_server_url: "https://{{ vip if vip is defined and vip != '' else hostvars[group['master'][0]].ansible_host }}:9345"
 rke2_tls_san: []
 cni: cilium
 

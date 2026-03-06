@@ -11,7 +11,7 @@
 - block:
   - name: Install and config kubectl
     include_tasks: config_kubectl.yml
-  when: inventory_hostname in groups['rke2-master']
+  when: inventory_hostname in groups['master']
   tags: [ config_kubectl ]
 
 - block: # Config cni
@@ -23,9 +23,17 @@
 - block:
   - name: Deploy storageclass
     include_tasks: storageclass.yml
+  when: inventory_hostname == "master-01"
   tags: [ deploy_storageclass ]
 
 - block:
   - name: Label nodes 
     include_tasks: label_node.yml 
+  when: inventory_hostname == "master-01"
   tags: [ label_node ]
+
+- block:
+  - name: Label nodes 
+    include_tasks: taint_node.yml 
+  when: inventory_hostname == "master-01"
+  tags: [ taint_node ]

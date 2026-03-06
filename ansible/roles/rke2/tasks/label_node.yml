@@ -2,5 +2,18 @@
   - name: Label nodes
     shell: |
       kubectl label node {{ hostvars[item].node_name }} {{ hostvars[item].labels }}
-    when: hostvars[item].labels is defined and hostvars[item].labels != '' and inventory_hostname == "master-01"
+    when: 
+      - hostvars[item].labels is defined 
+      - hostvars[item].labels != '' 
+      - inventory_hostname == "master-01"
     loop: "{{ groups['rke2'] }}"
+
+  - name: Get node labels
+    shell: |
+      kubectl get node --show-labels 
+    register: result
+    when: inventory_hostname == "master-01"
+
+  - name: Show node labels
+    debug: 
+      var: result.stdout_lines

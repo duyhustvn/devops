@@ -1,12 +1,12 @@
 node-ip: {{ ansible_host }}
 node-name: {{ node_name }}
-{% if inventory_hostname != groups['rke2-master'][0] %}
-server: https://{{ hostvars[groups['rke2-master'][0]].ansible_host }}:9345
+{% if inventory_hostname != groups['master'][0] %}
+server: https://{{ hostvars[groups['master'][0]].ansible_host }}:9345
 {% endif %}
 token: {{ rke2_token }}
-{% if inventory_hostname in groups['rke2-master'] %}
+{% if inventory_hostname in groups['master'] %}
 tls-san:
-{% for host in groups['rke2-master'] %}
+{% for host in groups['master'] %}
   - {{ host }}
   - {{ hostvars[host].ansible_host }}
 {% endfor %}
