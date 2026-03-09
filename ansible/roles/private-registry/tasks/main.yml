@@ -1,0 +1,89 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/private-registry
+
+- block:
+    - name: Config registry domain in /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ registry_ip }} {{ registry_hostname }}"
+        state: present
+        backup: yes
+
+- block:
+    - name: Create folder for docker-compose
+      file:
+        path: "{{ registry_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create file docker-compose.yml
+      template:
+        src: "docker-compose.yml.j2"
+        dest: "{{ registry_dir }}/docker-compose.yml"
+        mode: "0600"
+        owner: root
+        group: root
+
+    - name: Start private registry
+      command: docker compose up -d
+      args:
+        chdir: "{{ registry_dir }}"
+  when: inventory_hostname == "master-01"
+
+- block:
+    - name: Make sure /etc/docker exists
+      file:
+        path: /etc/docker
+        state: directory
+        mode: "0755"
+
+    - name: Check if daemon.json file exists
+      stat:
+        path: "/etc/docker/daemon.json"
+      register: daemon_stat
+
+    - name: Read file daemon.json
+      slurp:
+        src: "/etc/docker/daemon.json"
+      register: daemon_content
+      when: daemon_stat.stat.exists
+
+    - name: Transform content of daemon.json to dictionary
+      set_fact:
+        # Nếu file tồn tại, giải mã base64 và chuyển thành JSON. Nếu không, tạo dict rỗng {}
+        current_docker_config: "{{ (daemon_content['content'] | b64decode | from_json) if daemon_stat.stat.exists else {} }}"
+
+    - name: Config insecure-registries
+      set_fact:
+        new_docker_config: >-
+          {{
+            current_docker_config | combine({
+              'insecure-registries': (current_docker_config.get('insecure-registries', []) + [registry_hostname ~ ':' ~ registry_port]) | unique
+            })
+          }}
+
+    - name: Write the merged content into daemon.json
+      copy:
+        dest: /etc/docker/daemon.json
+        content: "{{ new_docker_config | to_nice_json }}"
+      notify: Restart Docker
+  when: inventory_hostname == "master-01"
+
+- block:
+    - name: Check if rke2 is installed
+      stat:
+        path: "/etc/rancher/rke2"
+      register: rke2_dir_stat
+
+    - name: Config registries.yaml for RKE2
+      template:
+        src: "registries.yaml.j2"
+        dest: "/etc/rancher/rke2/registries.yaml"
+        mode: "0700"
+        owner: root
+        group: root
+      when:
+        - rke2_dir_stat.stat.exists
+        - rke2_dir_stat.stat.isdir
+      notify: Restart RKE2 Service
