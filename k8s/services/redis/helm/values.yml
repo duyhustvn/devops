@@ -12,10 +12,12 @@ sentinel:
     tag: latest
   containerPorts:
     sentinel: 26379
+  masterSet: redis-master # set master name
 
 auth:
   enabled: true
   existingSecret: redis-secret
+  sentinel: false
 
 replica:
   kind: StatefulSet

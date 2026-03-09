@@ -5,3 +5,6 @@ apply:
 
 undeploy: 
 	helm uninstall $(service)
+
+remove-pvc:
+	kubectl delete pvc -l app.kubernetes.io/name=$(service)
