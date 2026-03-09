@@ -7,7 +7,7 @@ Vagrant.configure("2") do |config|
     { gui_display_name: "k8s_worker_1", name: "k8sworker1", hostname: "k8s-worker-1", ip: "192.168.56.104" },
     { gui_display_name: "k8s_worker_2", name: "k8sworker2", hostname: "k8s-worker-2", ip: "192.168.56.105" },
     { gui_display_name: "k8s_worker_3", name: "k8sworker3", hostname: "k8s-worker-3", ip: "192.168.56.106" },
-    { gui_display_name: "k8s_gateway_1", name: "k8sgateway1", hostname: "k8s-gateway-1", ip: "192.168.56.107" },
+    { gui_display_name: "k8s_gateway_1", name: "k8sgateway1", hostname: "k8s-gateway-1", ip: "192.168.56.107", bridge: true },
     { gui_display_name: "k8s_db_1", name: "k8sdb1", hostname: "k8s-db-1", ip: "192.168.56.108" },
     { gui_display_name: "k8s_db_2", name: "k8sdb2", hostname: "k8s-db-2", ip: "192.168.56.109" },
     { gui_display_name: "k8s_db_3", name: "k8sdb3", hostname: "k8s-db-3", ip: "192.168.56.110" },
@@ -23,6 +23,7 @@ Vagrant.configure("2") do |config|
       # vm_config.vm.hostname = vm[:hostname]
       # Fixed IP addresses for private network
       vm_config.vm.network "private_network", ip: vm[:ip]
+      vm_config.vm.network "public_network", bridge: "wlp1s0" if vm[:bridge] # update bridge interface to use host interface as bridge 
 
       vm_config.vm.provider "virtualbox" do |vb|
         vb.name = vm[:gui_display_name]
