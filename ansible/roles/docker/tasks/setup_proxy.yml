@@ -1,0 +1,25 @@
+- block:
+    - name: Create systemd drop-in directory for Docker
+      file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Set environment variables for Docker proxy
+      copy:
+        dest: /etc/systemd/system/docker.service.d/proxy.conf
+        content: |
+          [Service]
+          Environment="HTTP_PROXY={{ proxy }}"
+          Environment="HTTPS_PROXY={{ proxy }}"
+          Environment="NO_PROXY={{ no_proxy }}"
+
+    - name: Reload systemd manager configuration
+      command: systemctl daemon-reload
+
+    - name: Restart Docker to apply proxy config
+      service:
+        name: docker
+        state: restarted
+        enabled: yes
+  when: proxy is defined and proxy != ""

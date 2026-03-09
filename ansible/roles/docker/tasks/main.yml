@@ -2,12 +2,18 @@
 ---
 # tasks file for roles/docker
 
-- name: Check if docker is installed
-  command: which docker
-  register: docker_check
-  ignore_errors: yes
-
 - block:
-  - name: Install docker
-    include_tasks: install_docker_{{ansible_os_family}}.yml
-  when: docker_check.rc != 0
+    - name: Check if docker is installed
+      command: which docker
+      register: docker_check
+      ignore_errors: true
+
+    - name: Install docker
+      include_tasks: install_docker_{{ansible_os_family}}.yml
+      when: docker_check.rc != 0
+  tags: ["install_docker"]
+
+- name: Setup docker proxy
+  include_tasks: setup_proxy.yml
+  when: proxy is defined and proxy != ""
+  tags: ["set_docker_proxy"]

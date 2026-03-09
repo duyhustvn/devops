@@ -1,25 +1,7 @@
 - block:
-    - name: Create directory for Docker daemon config
-      file:
-        path: /etc/docker
-        state: directory
-        mode: '0644'
-        owner: root
-        group: root
-
-    - name: Set docker root data
-      copy:
-        dest: /etc/docker/daemon.json
-        content: |
-          {
-            "data-root": "{{ docker_data_root }}",
-            "log-driver": "json-file",
-            "log-opts": {
-              "max-size": "{{ docker_log_max_size }}",
-              "max-file": "{{ docker_log_max_file }}"
-            }
-          }
-      when: docker_data_root is defined and docker_data_root != ""
+    - name: Setup data root for docker
+      include_tasks: setup_data_root.yml
+  when: docker_data_root is defined and docker_data_root != ""
 
 - block:
     - name: Install requirement packages
@@ -37,20 +19,20 @@
       file:
         path: /etc/apt/keyrings
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     - name: Download Docker GPG key
       get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
         dest: /etc/apt/keyrings/docker.asc
-        mode: '0644'
+        mode: "0644"
         force: yes
       environment: "{{ (proxy | default('') | trim) | ternary({'http_proxy': proxy, 'https_proxy': proxy}, {}) }}"
 
     - name: Set appropriate permissions on the GPG key
       file:
         path: /etc/apt/keyrings/docker.asc
-        mode: '0644'
+        mode: "0644"
         owner: root
         group: root
 
@@ -77,39 +59,3 @@
           - docker-buildx-plugin
           - docker-compose-plugin
         state: latest
-
-    - name: Create systemd drop-in directory for Docker
-      file:
-        path: /etc/systemd/system/docker.service.d
-        state: directory
-        mode: '0755'
-
-    - name: Reload systemd manager configuration
-      command: systemctl daemon-reload
-
-    - name: Restart Docker to apply proxy config
-      service:
-        name: docker
-        state: restarted
-        enabled: yes
-
-- block:
-    - name: Set environment variables for Docker proxy
-      copy:
-        dest: /etc/systemd/system/docker.service.d/proxy.conf
-        content: |
-          [Service]
-          Environment="HTTP_PROXY={{ proxy }}"
-          Environment="HTTPS_PROXY={{ proxy }}"
-          Environment="NO_PROXY={{ no_proxy }}"
-      when: proxy is defined and proxy != ""
-
-    - name: Reload systemd manager configuration
-      command: systemctl daemon-reload
-
-    - name: Restart Docker to apply proxy config
-      service:
-        name: docker
-        state: restarted
-        enabled: yes
-

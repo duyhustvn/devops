@@ -1,0 +1,22 @@
+- block:
+    - name: Create directory for Docker daemon config
+      file:
+        path: /etc/docker
+        state: directory
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Set docker root data
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "data-root": "{{ docker_data_root }}",
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "{{ docker_log_max_size }}",
+              "max-file": "{{ docker_log_max_file }}"
+            }
+          }
+  when: docker_data_root is defined and docker_data_root != ""
