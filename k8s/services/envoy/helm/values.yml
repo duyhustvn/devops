@@ -1,6 +1,6 @@
 # Global settings
 global:
-   images:
+  images:
     envoyGateway:
       image: "docker.io/envoyproxy/gateway:v1.5.0"
       pullPolicy: IfNotPresent
@@ -9,7 +9,7 @@ global:
       pullPolicy: IfNotPresent
 
 config:
-# -- EnvoyGateway configuration. Visit https://gateway.envoyproxy.io/docs/api/extension_types/#envoygateway to view all options.
+  # -- EnvoyGateway configuration. Visit https://gateway.envoyproxy.io/docs/api/extension_types/#envoygateway to view all options.
   envoyGateway:
     provider:
       kubernetes:
@@ -19,15 +19,20 @@ config:
     extensionApis:
       enableEnvoyPatchPolicy: true
 
-
-deployment:
+deployment: # envoy gateway
   replica: 1
   pod:
     labels:
       host-network: "true"
-    tolerations: []
-    nodeSelector: {}
+    tolerations: &a1
+      - key: gateway
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+    nodeSelector: &a2
+      gateway: "true"
 
 certgen:
   job:
-    tolerations: []
+    tolerations: *a1
+    nodeSelector: *a2

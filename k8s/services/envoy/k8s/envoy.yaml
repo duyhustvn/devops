@@ -43,8 +43,13 @@ spec:
         pod:
           labels:
             host-network: "true"
-          tolerations: []
-          nodeSelector: {}
+          tolerations:
+            - key: gateway
+              operator: Equal
+              value: "true"
+              effect: NoSchedule
+          nodeSelector:
+            gateway: "true"
           volumes:
             - name: envoy-access-log
               hostPath:
