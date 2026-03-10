@@ -1,0 +1,84 @@
+podLabels:
+  app: telegraf-ds
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+
+env:
+  - name: HOSTNAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+  - name: HOSTIP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  - name: HOST_PROC
+    value: "/hostfs/proc"
+  - name: HOST_SYS
+    value: "/hostfs/sys"
+  - name: HOST_MOUNT_PREFIX
+    value: "/hostfs"
+  - name: INFLUXDB_IP
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_IP
+  - name: INFLUXDB_PORT
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_PORT
+  - name: INFLUXDB_DATABASE
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_DATABASE
+  - name: INFLUXDB_USERNAME
+    valueFrom:
+      configMapKeyRef:
+        name: influxdb-config
+        key: INFLUXDB_USERNAME
+  - name: INFLUXDB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: influxdb-secret
+        key: INFLUXDB_PASSWORD
+
+config:
+  global_tags:
+    customer: "test"
+    environment: "test"
+    project: "devops"
+    ip_addr: "$HOSTIP"
+  agent:
+    interval: "10s"
+    round_interval: true
+    metric_batch_size: 1000
+    metric_buffer_limit: 10000
+    flush_interval: "10s"
+    flush_jitter: "0s"
+    precision: ""
+    debug: true
+    quiet: false
+    hostname: "$HOSTIP"
+    omit_hostname: false
+  inputs:
+    # https://github.com/influxdata/telegraf/tree/master/plugins/inputs/kubernetes#kubernetes-input-plugin
+    - kubernetes:
+        url: "https://$HOSTIP:10250"
+        bearer_token: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        insecure_skip_verify: true
+  outputs:
+    - influxdb:
+        urls:
+          - "http://$INFLUXDB_IP:$INFLUXDB_PORT"
+        database: "$INFLUXDB_DATABASE"
+        precision: "s"
+        timeout: "10s"
+        username: "$INFLUXDB_USERNAME"
+        password: "$INFLUXDB_PASSWORD"
+        insecure_skip_verify: true

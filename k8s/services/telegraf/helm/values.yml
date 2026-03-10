@@ -95,12 +95,6 @@ config:
     hostname: "$NODE_IP"
     omit_hostname: false
   inputs:
-    # https://github.com/influxdata/telegraf/tree/master/plugins/inputs/kubernetes#kubernetes-input-plugin
-    - kubernetes:
-        url: ""
-        bearer_token: "/var/run/secrets/kubernetes.io/serviceaccount/token"
-        insecure_skip_verify: true
-
     # https://github.com/influxdata/telegraf/tree/master/plugins/inputs/kube_inventory 
     - kube_inventory:
         namespace: ""

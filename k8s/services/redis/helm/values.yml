@@ -27,6 +27,13 @@ replica:
   accessModes:
     - ReadWriteOnce
   size: 8Gi
+  resources:
+    limits:
+      cpu: 16
+      memory: 14Gi
+    requests:
+      cpu: 10m
+      memory: 5Mi
   persistentVolumeClaimRetentionPolicy:
     enabled: true
     whenScaled: Retain
