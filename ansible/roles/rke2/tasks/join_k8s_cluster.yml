@@ -17,17 +17,8 @@
 - block:
     # https://docs.rke2.io/advanced#configuring-an-http-proxy
     - name: Config proxy for rke2
-      copy:
-        dest: /etc/default/{{ item }}
-        content: |
-          HTTP_PROXY={{ proxy }}
-          HTTPS_PROXY={{ proxy }}
-          NO_PROXY=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,registry.local:8000
-      loop:
-        - rke2-server
-        - rke2-agent
+      include_tasks: config_proxy.yml
   when: proxy is defined and proxy != ""
-  tags: [config_rke2_proxy]
 
 - block:
     - name: Running rke2 installation script
