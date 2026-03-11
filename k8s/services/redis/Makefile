@@ -1,10 +1,10 @@
 service=redis
 
 apply:
-	helm upgrade --install $(service) bitnami/redis --version 25.3.2 -f helm/values.yml
+	helm upgrade --install $(service) ./helm/redis-25.3.2.tgz -f helm/values.yml
 
-undeploy: 
+uninstall: 
 	helm uninstall $(service)
 
-remove-pvc:
+delete-pvc:
 	kubectl delete pvc -l app.kubernetes.io/name=$(service)

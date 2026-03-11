@@ -45,3 +45,15 @@ replica:
       operator: Equal
       value: "true"
       effect: NoSchedule
+
+master:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - redis
+          topologyKey: kubernetes.io/hostname
