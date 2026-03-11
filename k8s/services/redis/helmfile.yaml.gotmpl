@@ -1,0 +1,31 @@
+---
+environments:
+  devlocal:
+    values:
+      - envs/devlocal.yaml
+  lab:
+    values:
+      - envs/lab.yaml
+
+---
+releases:
+  - name: redis
+    chart: ./charts/redis-25.3.2.tgz
+    values:
+      - values-common.yaml
+      - replica:
+          replicaCount: {{ .Values.replica_count }}
+          resources:
+            limits:
+              cpu: {{ .Values.cpu_limit | quote }}
+              memory: {{ .Values.mem_limit | quote }}
+          persistence:
+            size: {{ .Values.replica_volume_size }}
+          nodeSelector:
+            dedicated: {{ .Values.node_selector_value }}
+          tolerations:
+            - key: dedicated
+              operator: Equal
+              value: {{ .Values.node_toleration_value }} 
+              effect: NoSchedule
+

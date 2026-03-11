@@ -21,30 +21,14 @@ auth:
 
 replica:
   kind: StatefulSet
-  replicaCount: 3
   persistence:
     enabled: true
-  accessModes:
-    - ReadWriteOnce
-  size: 8Gi
-  resources:
-    limits:
-      cpu: 16
-      memory: 14Gi
-    requests:
-      cpu: 10m
-      memory: 5Mi
+    accessModes:
+      - ReadWriteOnce
   persistentVolumeClaimRetentionPolicy:
     enabled: true
     whenScaled: Retain
     whenDeleted: Retain
-  nodeSelector:
-    db: "true"
-  tolerations:
-    - key: db
-      operator: Equal
-      value: "true"
-      effect: NoSchedule
 
 master:
   affinity:
