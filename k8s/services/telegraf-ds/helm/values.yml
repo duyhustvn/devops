@@ -7,6 +7,10 @@ rbac:
 serviceAccount:
   create: true
 
+tolerations:
+  - operator: Exists
+    effect: NoSchedule
+
 env:
   - name: HOSTNAME
     valueFrom:
@@ -82,3 +86,4 @@ config:
         username: "$INFLUXDB_USERNAME"
         password: "$INFLUXDB_PASSWORD"
         insecure_skip_verify: true
+
