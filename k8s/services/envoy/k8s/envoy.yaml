@@ -22,6 +22,14 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: envoy-tls
 
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -44,12 +52,12 @@ spec:
           labels:
             host-network: "true"
           tolerations:
-            - key: gateway
+            - key: dedicated
               operator: Equal
-              value: "true"
+              value: "gateway"
               effect: NoSchedule
           nodeSelector:
-            gateway: "true"
+            dedicated: "gateway"
           volumes:
             - name: envoy-access-log
               hostPath:

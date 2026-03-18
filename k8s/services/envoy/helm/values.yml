@@ -25,14 +25,19 @@ deployment: # envoy gateway
     labels:
       host-network: "true"
     tolerations: &a1
-      - key: gateway
+      - key: dedicated
         operator: Equal
-        value: "true"
+        value: "gateway"
         effect: NoSchedule
     nodeSelector: &a2
-      gateway: "true"
+      dedicated: "gateway"
 
-certgen:
+certgen: 
+  # job certgen tạo:
+  # CA cert tự ký
+  # Server cert cho Envoy Gateway controller
+  # Client cert cho envoy proxy
+  # Những cert này được lưu vào Secret trong namespace envoy-gateway-system, dùng giao tiếp nội bộ của envoy gateway
   job:
     tolerations: *a1
     nodeSelector: *a2
