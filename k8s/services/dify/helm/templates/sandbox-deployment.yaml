@@ -1,0 +1,94 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dify.fullname" . }}-sandbox
+  labels:
+    {{- include "dify.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+    {{- include "dify.global.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.sandbox.autoscaling.enabled }}
+  replicas: {{ .Values.sandbox.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "dify.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sandbox
+  template:
+    metadata:
+      {{- with .Values.sandbox.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "dify.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sandbox
+        {{- include "dify.global.labels" . | nindent 8 }}
+        app: dify-sandbox
+    spec:
+      {{- with .Values.sandbox.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dify.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.sandbox.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.sandbox.securityContext | nindent 12 }}
+          image: "{{ .Values.sandbox.image.repository }}:{{ .Values.sandbox.image.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.sandbox.image.pullPolicy }}
+          env:
+          - name: PLACEHOLDER
+            value: "PLACEHOLDER"
+          {{- with .Values.sandbox.envs }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+          - name: API_KEY
+          {{- if .Values.sandbox.apiKeySecret }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.sandbox.apiKeySecret }}
+                key: sandbox-api-key
+          {{- else if .Values.sandbox.apiKey }}
+            value: {{ .Values.sandbox.apiKey | quote }}
+          {{- else }}
+          {{- end }}
+          {{- with .Values.sandbox.extraEnvs }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /dependencies
+          ports:
+            - name: http
+              containerPort: {{ .Values.sandbox.containerPort }}
+              protocol: TCP
+          {{- with .Values.sandbox.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.sandbox.readinessProbe}}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.sandbox.resources | nindent 12 }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "dify.fullname" . }}-sandbox-config

@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 1.9.1
+description: A Helm chart for Dify
+home: https://github.com/langgenius/dify
+maintainers:
+- name: duy
+name: dify
+type: application
+version: 1.0.0

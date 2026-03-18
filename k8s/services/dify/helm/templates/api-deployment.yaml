@@ -1,0 +1,145 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dify.fullname" . }}-api
+  labels:
+    {{- include "dify.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    {{- include "dify.global.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "dify.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      {{- with .Values.api.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "dify.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        {{- include "dify.global.labels" . | nindent 8 }}
+        app: dify-api
+    spec:
+      {{- with .Values.api.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dify.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+
+      {{- if (and .Values.proxy.enabled .Values.proxy.ca_crt.enabled) }}
+      # initContainers use to set CA cert of proxy
+      initContainers:
+        - name: install-ca-certificate
+          image: {{ .Values.proxy.ca_crt.image }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              sed -i 's/https/http/' /etc/apk/repositories && \
+              apk update && \
+              apk add --no-cache ca-certificates && \
+              cp /ca-config/proxy_ca.crt /usr/local/share/ca-certificates/proxy_ca.crt && \
+              update-ca-certificates && \
+              cp -a /etc/ssl/certs/ca-certificates.crt /cert-store/ca-certificates.crt || true
+          volumeMounts:
+            - name: dify-proxy-volume
+              mountPath: /ca-config
+            - name: ca-certs-store
+              mountPath: /cert-store
+          env:
+            {{- include "dify.commonBackendEnvs" . | nindent 12 }}
+      {{- end }}
+
+      containers:
+        - name: {{ .Chart.Name }}-api
+          securityContext:
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          image: "{{ .Values.api.image.repository }}:{{ coalesce .Values.api.image.tag .Values.global.image.tag .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          env:
+            - name: MODE
+              value: "api"
+            {{- include "dify.commonEnvs" . | nindent 12 }}
+            {{- include "dify.commonBackendEnvs" . | nindent 12 }}
+            {{- with .Values.global.extraEnvs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.global.extraBackendEnvs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.api.envs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: CODE_EXECUTION_ENDPOINT
+              value: "http://{{ include "dify.fullname" . }}-sandbox.{{ .Values.global.namespace }}.svc.cluster.local"
+            - name: CODE_EXECUTION_API_KEY
+            {{- if .Values.sandbox.apiKeySecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sandbox.apiKeySecret }}
+                  key: sandbox-api-key
+            {{- else if .Values.sandbox.apiKey }}
+              value: {{ .Values.sandbox.apiKey | quote }}
+            {{- else }}
+            {{- end }}
+            - name: CELERY_BROKER_URL
+              value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.default.svc.cluster.local:26379/1"
+            {{- with .Values.api.extraEnvs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          # Volume Mounts
+          volumeMounts:
+          {{- if (and .Values.proxy.enabled .Values.proxy.ca_crt.enabled) }}
+            - name: ca-certs-store
+              mountPath: "/etc/ssl/certs"
+          {{- end }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.containerPort }}
+              protocol: TCP
+          {{- with .Values.api.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.api.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+
+      # Volumes
+      volumes:
+      {{- if (and .Values.proxy.enabled .Values.proxy.ca_crt.enabled) }}
+        - name: dify-proxy-volume
+          secret:
+            secretName: dify-proxy-volume
+        - name: ca-certs-store
+          emptyDir: {}
+      {{- end }}
+
+
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

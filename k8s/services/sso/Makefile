@@ -2,5 +2,5 @@ service=sso
 
 apply: 
 	helm upgrade --install $(service) .
-undeploy: 
+uninstall: 
 	helm uninstall $(service)
