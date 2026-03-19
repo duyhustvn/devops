@@ -153,6 +153,9 @@ commonBackendEnvs are for api and worker containers
 - name: REDIS_PORT
   value: "26379"
 
+- name: CELERY_BROKER_URL
+  value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.default.svc.cluster.local:26379/1"
+
 - name: DB_USERNAME
   valueFrom:
     configMapKeyRef:
