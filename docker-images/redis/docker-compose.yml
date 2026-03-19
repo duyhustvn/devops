@@ -1,0 +1,42 @@
+services:
+  redis:
+    image: redis:8
+    container_name: redis
+    command: >
+      sh -c 'export $$(cat /run/secrets/redis_secret | xargs) && 
+      redis-server 
+      --requirepass "$$REDIS_PW" 
+      --save 60 1 
+      --appendonly yes'
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'export $$(cat /run/secrets/multi_secrets | xargs) && redis-cli -a "$$REDIS_PW" ping | grep -q PONG',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.82.0-alpine
+    container_name: redis_exporter
+    ports:
+      - "9121:9121"
+    entrypoint: >
+        sh -c 'export $$(cat /run/secrets/redis_secret | xargs) &&
+        /redis_exporter --redis.addr redis:6379 --redis.password "$$REDIS_PW"'
+    restart: always
+
+secrets:
+  redis_secret:
+    file: ./redis_secret
+
+volumes:
+  redis_data:
+    name: redis_data
