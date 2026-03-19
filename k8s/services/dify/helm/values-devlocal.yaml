@@ -26,7 +26,7 @@ global:
   # Provide extra labels for all deployments and related pods of this chart
   labels: {}
   image:
-    tag: "1.10.0"
+    tag: "1.13.2"
 
   host: "example.com" 
   port: ""
@@ -50,7 +50,6 @@ api:
   replicaCount: 1
   image:
     repository: "langgenius/dify-api"
-    tag: "1.10.0"
   envs:
     # sandbox
     - name: CODE_MAX_NUMBER
@@ -144,7 +143,6 @@ api:
 frontend:
   image:
     repository: "langgenius/dify-web"
-    tag: "1.10.0"
   replicaCount: 1
   envs:
     - name: MARKETPLACE_API_URL
@@ -222,7 +220,7 @@ frontend:
 pluginDaemon:
   image:
     repository: "langgenius/dify-plugin-daemon"
-    tag: "0.4.1-local"
+    tag: "0.5.4-local"
   enabled: true
   replicaCount: 1
   # plugin daemon depends on persistence volume
@@ -342,7 +340,6 @@ sandbox:
 worker:
   image:
     repository: "langgenius/dify-api"
-    tag: "1.10.0"
   replicaCount: 1
 
   podAnnotations: {}
