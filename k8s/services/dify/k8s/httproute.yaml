@@ -38,6 +38,17 @@ spec:
     - matches:
         - path:
             type: PathPrefix
+            value: /explore
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: dify-frontend
+          port: 80
+          weight: 1
+
+    - matches:
+        - path:
+            type: PathPrefix
             value: /e
       backendRefs:
         - group: ""
@@ -49,9 +60,6 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /explore
-        - path:
-            type: PathPrefix
             value: /
       backendRefs:
         - group: ""
@@ -59,3 +67,4 @@ spec:
           name: dify-frontend
           port: 80
           weight: 1
+
