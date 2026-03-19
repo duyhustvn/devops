@@ -101,9 +101,6 @@ spec:
               value: /app/storage/cwd
             {{- include "dify.commonEnvs" . | nindent 12 }}
             {{- include "dify.commonBackendEnvs" . | nindent 12 }}
-            {{- with .Values.global.extraEnvs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
             {{- with .Values.global.extraBackendEnvs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

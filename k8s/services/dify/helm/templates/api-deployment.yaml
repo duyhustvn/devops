@@ -71,9 +71,6 @@ spec:
               value: "api"
             {{- include "dify.commonEnvs" . | nindent 12 }}
             {{- include "dify.commonBackendEnvs" . | nindent 12 }}
-            {{- with .Values.global.extraEnvs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
             {{- with .Values.global.extraBackendEnvs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -91,11 +88,6 @@ spec:
             {{- else if .Values.sandbox.apiKey }}
               value: {{ .Values.sandbox.apiKey | quote }}
             {{- else }}
-            {{- end }}
-            - name: CELERY_BROKER_URL
-              value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.default.svc.cluster.local:26379/1"
-            {{- with .Values.api.extraEnvs }}
-            {{- toYaml . | nindent 12 }}
             {{- end }}
 
           # Volume Mounts

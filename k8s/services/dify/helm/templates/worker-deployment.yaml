@@ -73,21 +73,10 @@ spec:
               value: "worker"
             {{- include "dify.commonEnvs" . | nindent 12 }}
             {{- include "dify.commonBackendEnvs" . | nindent 12 }}
-            {{- with .Values.global.extraEnvs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
             {{- with .Values.global.extraBackendEnvs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.worker.envs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            - name: CELERY_BROKER_URL
-              value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.default.svc.cluster.local:26379/1"
-            {{- with .Values.api.extraEnvs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.worker.extraEnvs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
 
