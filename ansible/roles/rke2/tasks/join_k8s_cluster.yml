@@ -4,14 +4,20 @@
   tags: [download_rke2]
 
 - block:
-    - name: Copy rke2-artifacts into remote server
-      synchronize:
-        src: rke2-artifacts
-        dest: /root
-        recursive: yes
-        rsync_opts:
-          - "--chown=root:root"
-        use_ssh_args: yes
+    - name: Step 1 - Sync rke2-artifacts to a temporary directory as regular user
+      ansible.posix.synchronize:
+        src: /home/vbox/Code/devops/ansible/roles/rke2/files/rke2-artifacts
+        dest: /tmp/rke2-artifacts
+      become: false 
+
+    - name: Step 2 - Move artifacts to the final root destination
+      ansible.builtin.copy:
+        src: /tmp/rke2-artifacts/
+        dest: /root/rke2-artifacts/
+        remote_src: yes
+        owner: root
+        group: root
+      become: true 
   tags: [sync_rke2_artifacts]
 
 - block:

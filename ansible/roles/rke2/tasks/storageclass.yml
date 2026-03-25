@@ -1,6 +1,14 @@
+- name: Copy local-path-storage.yaml to remote server
+  copy:
+    src: 'local-path-storage-v0.0.32.yaml'
+    dest: '/tmp/local-path-storage.yaml'
+    mode: '0644'
+    owner: root
+    group: root
+
 - name: Deploy storageclass local-path-provisioner
   shell: |
-    kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.32/deploy/local-path-storage.yaml
+    kubectl apply -f /tmp/local-path-storage.yaml 
   register: result
 
 - name: Show result of deploy storageclass local-path-provisioner
