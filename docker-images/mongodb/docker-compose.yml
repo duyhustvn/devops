@@ -1,0 +1,20 @@
+services:
+  mongodb:
+    image: mongo:8
+    container_name: mongodb
+    restart: always 
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: /secrets/mongodb_admin_password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+secrets:
+  mongodb_admin_password:
+    file: ./mongodb_secret
+
+volumes:
+  mongodb_data:
+    name: mongodb_data 
