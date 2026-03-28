@@ -1,6 +1,7 @@
 replica_count: 3
-cpu_limit: "16"
-mem_limit: "16Gi"
+cpu_limit: "20"
+mem_limit: "50Gi"
 node_selector_value: "db"
 node_toleration_value: "db"
-replica_volume_size: "10Gi"
+node_toleration_effect: "NoSchedule"
+replica_volume_size: "50Gi"

@@ -3,13 +3,17 @@ environments:
   devlocal:
     values:
       - envs/devlocal.yaml
+  lab:
+    values:
+      - envs/lab.yaml
 
 ---
 releases:
   - name: local-path-provisioner
+    namespace: local-path-storage
     chart: ./charts/local-path-provisioner-0.0.35.tgz
     values:
       - nodePathMap:
         - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
           paths:
-          - {{ .Values.nodePathMap }}
+          - {{ .Values.nodePathMap | quote }}

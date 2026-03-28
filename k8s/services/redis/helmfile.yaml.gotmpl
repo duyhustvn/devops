@@ -10,12 +10,16 @@ environments:
 ---
 releases:
   - name: redis
+    namespace: redis
     chart: ./charts/redis-25.3.2.tgz
     values:
       - values-common.yaml
       - replica:
           replicaCount: {{ .Values.replica_count }}
           resources:
+            requests:
+              cpu: 2 
+              memory: 1Gi 
             limits:
               cpu: {{ .Values.cpu_limit | quote }}
               memory: {{ .Values.mem_limit | quote }}
@@ -27,5 +31,4 @@ releases:
             - key: dedicated
               operator: Equal
               value: {{ .Values.node_toleration_value }} 
-              effect: NoSchedule
-
+              effect: {{ .Values.node_toleration_effect }}
