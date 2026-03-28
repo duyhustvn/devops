@@ -9,8 +9,14 @@ environments:
 
 ---
 releases:
+  - name: redis-secret
+    namespace: redis
+    chart: ./secret-chart
+
   - name: redis
     namespace: redis
+    needs:
+      - redis/redis-secret
     chart: ./charts/redis-25.3.2.tgz
     values:
       - values-common.yaml

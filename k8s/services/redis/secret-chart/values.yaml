@@ -1,0 +1,8 @@
+secret:
+  name: redis-secret
+  key: redis-password
+  passwordLength: 32
+
+reflector:
+  allowedNamespaces:
+    - backend
