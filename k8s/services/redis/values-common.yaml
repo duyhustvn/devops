@@ -1,0 +1,43 @@
+image:
+  registry: registry-1.docker.io
+  repository: bitnami/redis
+  tag: latest
+
+architecture: replication
+sentinel:
+  enabled: true
+  image:
+    registry: registry-1.docker.io
+    repository: bitnami/redis-sentinel
+    tag: latest
+  containerPorts:
+    sentinel: 26379
+  masterSet: redis-master # set master name
+
+auth:
+  enabled: true
+  existingSecret: redis-secret
+  sentinel: false
+
+replica:
+  kind: StatefulSet
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+  persistentVolumeClaimRetentionPolicy:
+    enabled: true
+    whenScaled: Retain
+    whenDeleted: Retain
+
+master:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - redis
+          topologyKey: kubernetes.io/hostname
