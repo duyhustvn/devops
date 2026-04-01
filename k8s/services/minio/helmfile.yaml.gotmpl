@@ -1,0 +1,47 @@
+---
+environments:
+  devlocal:
+    values:
+      - envs/devlocal.yaml
+  lab:
+    values:
+      - envs/lab.yaml
+
+---
+releases:
+  - name: minio-secret
+    namespace: minio 
+    chart: ./secret-chart
+
+  - name: minio 
+    namespace: minio
+    needs:
+      - minio/minio-secret
+    chart: ./charts/minio-17.0.21.tgz
+    values:
+      - values-common.yaml
+      - persistence:
+          enabled: true
+          size: {{ .Values.volume_size }}
+          annotations:
+            helm.sh/resource-policy: keep
+
+      - statefulset:
+          replicaCount: {{ .Values.replica_count }}
+          drivesPerNode: {{ .Values.drivers_per_node }}
+
+      - resources:
+          requests:
+            cpu: 1 
+            memory: 200Mi 
+          limits:
+            cpu: {{ .Values.cpu_limit | quote }}
+            memory: {{ .Values.mem_limit | quote }}
+
+      - nodeSelector:
+          dedicated: {{ .Values.node_selector_value | quote }}
+      - tolerations:
+          - key: dedicated
+            operator: Equal
+            value: {{ .Values.node_toleration_value | quote }} 
+            effect: {{ .Values.node_toleration_effect | quote }}

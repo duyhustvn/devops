@@ -1,0 +1,6 @@
+apiVersion: v2
+name: minio-secret
+description: Generate and manage the Minio auth secret with reflector annotations.
+type: application
+version: 0.1.0
+appVersion: "1.0"

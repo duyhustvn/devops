@@ -1,0 +1,7 @@
+secret:
+  name: minio-secret
+  passwordLength: 32
+
+reflector:
+  allowedNamespaces:
+    - backend

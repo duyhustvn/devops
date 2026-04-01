@@ -1,0 +1,9 @@
+volume_size: 1Gi
+replica_count: 3
+drivers_per_node: 3
+zones: 1
+node_selector_value: db
+node_toleration_value: db
+node_toleration_effect: NoSchedule
+cpu_limit: 2
+mem_limit: 2Gi

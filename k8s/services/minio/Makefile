@@ -3,7 +3,8 @@ ifeq ($(ENV),)
 $(error ENV is required. Example: make diff ENV=devlocal or make apply ENV=lab)
 endif
 
-service=redis
+service=minio
+namespace=minio
 
 # Xem sự khác biệt
 diff:
@@ -23,9 +24,8 @@ sync:
 
 # Gỡ bỏ hoàn toàn các release định nghĩa trong helmfile của môi trường đó
 destroy:
-	@echo "DANGER: Dang xoa toan bo Redis tren moi truong $(ENV)..."
+	@echo "DANGER: Dang xoa toan bo Minio tren moi truong $(ENV)..."
 	helmfile -e $(ENV) destroy
 
 delete-pvc:
 	kubectl delete pvc -l app.kubernetes.io/name=$(service) -n $(namespace)
-

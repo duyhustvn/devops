@@ -2,4 +2,4 @@ create-config-map:
 	kubectl apply -f configmaps.yaml
 
 create-secret:
-	kubectl apply -f secrets.yaml
+	sops -d secrets.enc.yaml | kubectl apply -f -

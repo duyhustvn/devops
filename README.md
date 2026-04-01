@@ -1,3 +1,30 @@
+## Sops and age
+- Install age
+```
+sudo apt install age
+```
+
+- Create key age 
+```
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt
+grep '^# public key:' ~/.config/sops/age/keys.txt
+```
+You can get the public key in format age1...
+
+Replace the public key into file .sops.yaml field creation_rules.age
+
+- Encypt file secret, go to folder k8s/services
+```
+sops -e -i secrets.enc.yaml
+```
+
+- Edit secrets.enc.yaml 
+```
+sops secrets.enc.yaml
+```
+
+
 ## Install helmfile and helm
 - Install helmfile
 ```
