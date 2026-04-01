@@ -138,7 +138,7 @@ commonBackendEnvs are for api and worker containers
 - name: REDIS_USE_SENTINEL
   value: "true"
 - name: REDIS_SENTINELS
-  value: "redis-headless.default.svc.cluster.local:26379"
+  value: "redis-headless.redis.svc.cluster.local:26379"
 - name: REDIS_SENTINEL_SERVICE_NAME
   value: "redis-master"
 - name: CELERY_USE_SENTINEL
@@ -154,7 +154,7 @@ commonBackendEnvs are for api and worker containers
   value: "26379"
 
 - name: CELERY_BROKER_URL
-  value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.default.svc.cluster.local:26379/1"
+  value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.redis.svc.cluster.local:26379/1"
 
 - name: DB_USERNAME
   valueFrom:
@@ -188,15 +188,9 @@ commonBackendEnvs are for api and worker containers
 
 {{- if eq .Values.global.storageType "s3" }}
 - name: S3_HOST
-  valueFrom:
-    configMapKeyRef:
-      name: minio-config
-      key: MINIO_HOST
+  value: minio-headless.minio.svc.cluster.local
 - name: S3_PORT
-  valueFrom:
-    configMapKeyRef:
-      name: minio-config
-      key: MINIO_PORT
+  value: "9000"
 - name: S3_ENDPOINT
   value: http://$(S3_HOST):$(S3_PORT) # k8s will replace at runtime
 - name: S3_BUCKET_NAME
