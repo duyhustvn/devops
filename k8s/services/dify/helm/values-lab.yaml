@@ -1,0 +1,11 @@
+api:
+  replicaCount: 2
+
+frontend:
+  replicaCount: 2
+
+sandbox:
+  replicaCount: 2
+
+worker:
+  replicaCount: 2
