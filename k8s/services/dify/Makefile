@@ -9,7 +9,7 @@ namespace=backend
 apply: 
 	helm upgrade --install $(service) \
 		-f helm/values-common.yaml \
-		-f helm/values-$(env).yaml \
+		-f helm/values-$(ENV).yaml \
 		helm/ -n $(namespace) --create-namespace
 	kubectl apply -f k8s/.
 
