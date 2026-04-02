@@ -32,8 +32,13 @@ global:
   port: ""
   enableTLS: true
 
-  nodeSelector: {}
-  tolerations: []
+  nodeSelector:
+    dedicated: "app"
+  tolerations:
+    - key: "dedicated"
+      value: "app"
+      operator: "Equal"
+      effect: "NoSchedule"
 
 serviceAccount:
   # Specifies whether a service account should be created
