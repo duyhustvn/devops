@@ -1,11 +1,11 @@
 api:
-  replicaCount: 3
+  replicaCount: 1
 
 frontend:
-  replicaCount: 3
+  replicaCount: 1
 
 sandbox:
-  replicaCount: 3
+  replicaCount: 1
 
 worker:
-  replicaCount: 3
+  replicaCount: 1
