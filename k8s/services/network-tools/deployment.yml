@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: network-tools
+  namespace: backend
   labels:
     app: network-tools 
 spec:
