@@ -78,7 +78,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
             - name: CODE_EXECUTION_ENDPOINT
-              value: "http://{{ include "dify.fullname" . }}-sandbox.{{ .Values.global.namespace }}.svc.cluster.local"
+              value: "http://{{ include "dify.fullname" . }}-sandbox.{{ .Release.Namespace }}.svc.cluster.local"
             - name: CODE_EXECUTION_API_KEY
             {{- if .Values.sandbox.apiKeySecret }}
               valueFrom:

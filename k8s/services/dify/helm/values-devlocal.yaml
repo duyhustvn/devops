@@ -31,7 +31,6 @@ global:
   host: "example.com" 
   port: ""
   enableTLS: true
-  namespace: "default"
 
   nodeSelector: {}
   tolerations: []

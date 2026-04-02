@@ -110,7 +110,7 @@ commonBackendEnvs are for api and worker containers
   value: {{ include "dify.baseUrl" $ }}
 {{- end }}
 - name: ENDPOINT_URL_TEMPLATE
-  value: {{ include "dify.baseUrl" $ }}.{{ .Values.global.namespace }}.svc.cluster.local/e/{hook_id}
+  value: {{ include "dify.baseUrl" $ }}.{{ .Release.Namespace }}.svc.cluster.local/e/{hook_id}
 {{- end }}
 
 
@@ -233,7 +233,7 @@ commonBackendEnvs are for api and worker containers
 
 {{- if .Values.pluginDaemon.enabled }}
 - name: PLUGIN_DAEMON_URL
-  value: "http://{{ include "dify.fullname" . }}-plugin-daemon.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.pluginDaemon.service.port }}"
+  value: "http://{{ include "dify.fullname" . }}-plugin-daemon.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.pluginDaemon.service.port }}"
 - name: MARKETPLACE_API_URL
   value: 'https://marketplace.dify.ai'
 
@@ -271,7 +271,7 @@ commonBackendEnvs are for api and worker containers
 {{- end }}
 
 - name: PLUGIN_DIFY_INNER_API_URL
-  value: http://{{ include "dify.fullname" . }}-api-svc.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.api.service.port }}
+  value: http://{{ include "dify.fullname" . }}-api-svc.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.api.service.port }}
 
 {{- end }} # end of dify.commonBackendEnvs
 
