@@ -110,7 +110,7 @@ commonBackendEnvs are for api and worker containers
   value: {{ include "dify.baseUrl" $ }}
 {{- end }}
 - name: ENDPOINT_URL_TEMPLATE
-  value: {{ include "dify.baseUrl" $ }}.{{ .Release.Namespace }}.svc.cluster.local/e/{hook_id}
+  value: {{ include "dify.baseUrl" $ }}/e/{hook_id}
 {{- end }}
 
 
