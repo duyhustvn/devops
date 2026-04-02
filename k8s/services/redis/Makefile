@@ -4,6 +4,7 @@ $(error ENV is required. Example: make diff ENV=devlocal or make apply ENV=lab)
 endif
 
 service=redis
+namespace=redis
 
 # Xem sự khác biệt
 diff:
@@ -28,4 +29,3 @@ destroy:
 
 delete-pvc:
 	kubectl delete pvc -l app.kubernetes.io/name=$(service) -n $(namespace)
-
