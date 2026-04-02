@@ -15,7 +15,7 @@ config:
       kubernetes:
         watchMode:
           type: Namespaces
-          namespaces: ["default", "api-gateway"]
+          namespaces: ["default", "api-gateway", "backend"]
     extensionApis:
       enableEnvoyPatchPolicy: true
 

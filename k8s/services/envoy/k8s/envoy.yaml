@@ -11,6 +11,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: eg
+  namespace: api-gateway
 spec:
   gatewayClassName: eg
   infrastructure: # refer to EnvoyProxy custom-proxy-config
@@ -22,9 +23,15 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
     - name: https
       protocol: HTTPS
       port: 443
+      allowedRoutes:
+        namespaces:
+          from: All
       tls:
         mode: Terminate
         certificateRefs:
@@ -36,6 +43,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
   name: custom-proxy-config
+  namespace: api-gateway
   labels:
     service: envoy
 spec:
