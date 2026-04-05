@@ -9,3 +9,13 @@ sandbox:
 
 worker:
   replicaCount: 2
+
+proxy:
+  enabled: true
+  proxy: http://test-proxy:3128
+  ca_cert:
+    enabled: true
+    content: |-
+      -----BEGIN CERTIFICATE-----
+      PUT PROXY CONTENT HERE
+      -----END CERTIFICATE-----

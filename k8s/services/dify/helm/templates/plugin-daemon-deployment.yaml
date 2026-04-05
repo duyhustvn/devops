@@ -62,6 +62,7 @@ spec:
           volumeMounts:
             - name: dify-proxy-volume
               mountPath: /ca-config
+
             - name: ca-certs-store
               mountPath: /cert-store
           env:
@@ -126,8 +127,12 @@ spec:
       {{- if (and .Values.proxy.enabled .Values.proxy.ca_crt.enabled) }}
       volumes:
         - name: dify-proxy-volume
-          secret:
-            secretName: dify-proxy-volume
+          configMap:
+            name: {{ include "dify.fullname "}}-proxy-ca
+
+        # ca-certs-store mount vào cả initContainers và containers 
+        # initContainers gen ra file ca-certificates.crt rồi copy file đó vào shared volume ca-certs-store tại đường dẫn /cert-store
+        # containers chính mount volume ca-certs-store và copy data từ /cert-store đè vào đường dẫn /etc/ssl/certs 
         - name: ca-certs-store
           emptyDir: {}
       {{- end }}

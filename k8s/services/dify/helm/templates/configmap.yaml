@@ -6,3 +6,15 @@ metadata:
 data:
   python-requirements.txt: |
 {{ .Values.sandbox.config.python_requirements | indent 4 }}
+
+---
+{{- if (and .Values.proxy.enabled .Values.proxy.ca_crt.enabled) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dify.fullname "}}-proxy-ca
+data:
+  # Tên key sẽ thành tên file khi mount vào container  
+  proxy_ca.crt: |
+{{ .Values.proxy.ca_crt.content | ident 4 }}
+{{- end}}
