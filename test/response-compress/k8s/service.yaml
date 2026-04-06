@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: response-compress-test
+  namespace: backend
+  labels:
+    app: response-compress-test
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8080 # forward to this port of container
+  selector:
+    app: response-compress-test

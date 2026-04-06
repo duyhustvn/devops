@@ -40,6 +40,147 @@ spec:
 
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: response-compression-filter
+  namespace: api-gateway
+spec:
+  # Gắn policy này vào Gateway `eg` ở namespace `api-gateway`.
+  # Mọi HTTPRoute attach vào Gateway này sẽ đi qua cấu hình filter bên dưới.
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: eg
+
+  # Dùng JSONPatch vì BackendTrafficPolicy ở Envoy Gateway 1.5 chỉ bật/tắt
+  # compressor theo codec (gzip/brotli/...) chứ không đủ field để cấu hình sâu:
+  # - ngưỡng tối thiểu để bắt đầu nén (min_content_length)
+  # - danh sách MIME type được phép nén
+  # - các cờ bảo thủ như disable_on_etag_header
+  type: JSONPatch
+  jsonPatches:
+    # Listener HTTP (port 80)
+    #
+    # `name: api-gateway/eg/http` là xDS listener name theo scheme cũ của EG 1.5
+    # vì cluster hiện tại chưa bật runtime flag `XDSNameSchemeV2`.
+    #
+    # Patch path bên dưới chèn filter compressor vào đầu chuỗi http_filters của
+    # HTTP listener (`http_filters/0`). Làm vậy để Envoy có cơ hội nén response
+    # trước khi router filter hoàn tất xử lý downstream response.
+    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      name: api-gateway/eg/http
+      operation:
+        op: add
+        path: "/default_filter_chain/filters/0/typed_config/http_filters/0"
+        value:
+          name: envoy.filters.http.compressor
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
+
+            # Chỉ dùng Gzip ở giai đoạn đầu:
+            # - tương thích client rộng
+            # - CPU rẻ hơn Brotli
+            # - đủ tốt cho HTML/CSS/JS/JSON
+            compressor_library:
+              name: text_optimized
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.compression.gzip.compressor.v3.Gzip
+                # memory_level thấp-vừa phải để giảm áp lực RAM/CPU trên node gateway.
+                memory_level: 5
+                # BEST_SPEED ưu tiên latency/CPU hơn ratio nén tối đa.
+                compression_level: BEST_SPEED
+                compression_strategy: DEFAULT_STRATEGY
+                # window_bits/chunk_size giữ ở mức phổ thông, an toàn cho traffic web.
+                window_bits: 15
+                chunk_size: 4096
+
+            # Không nén request body gửi upstream.
+            # Mục tiêu của policy này là giảm dung lượng response trả về client.
+            request_direction_config:
+              common_config:
+                enabled:
+                  default_value: false
+                  runtime_key: request_direction_config_enabled
+
+            # Chỉ nén response downstream khi client có Accept-Encoding phù hợp.
+            response_direction_config:
+              # Sau khi Envoy đã xử lý chuyện nén, bỏ Accept-Encoding trước khi
+              # request đi tiếp để tránh upstream và gateway cùng can thiệp vào
+              # compression theo cách khó đoán.
+              remove_accept_encoding_header: true
+              common_config:
+                enabled:
+                  default_value: true
+                  runtime_key: response_direction_config_enabled
+                # Chỉ nén nếu response từ 1KB trở lên.
+                # Response quá nhỏ thường không đáng để đổi CPU lấy băng thông.
+                min_content_length: 1024
+
+                # Chỉ nén các MIME type dạng text / JSON / JS / SVG.
+                # Không dùng wildcard kiểu `text/*` để tránh behavior mơ hồ;
+                # với compressor filter của Envoy, liệt kê explicit MIME type
+                # là cách rõ ràng và dễ audit hơn.
+                content_type:
+                  - application/json
+                  - application/javascript
+                  - application/xhtml+xml
+                  - image/svg+xml
+                  - text/css
+                  - text/html
+                  - text/plain
+                  - text/xml
+              # Nếu upstream có ETag thì bỏ qua compression để giảm rủi ro
+              # tương tác ngoài ý muốn với cache validator / conditional requests.
+              disable_on_etag_header: true
+
+    # Listener HTTPS (port 443)
+    #
+    # HTTPS listener trong EG 1.5 có cấu trúc patch path khác HTTP listener,
+    # nên phải dùng `/filter_chains/0/...` thay vì `/default_filter_chain/...`.
+    # Cấu hình compressor giữ giống HTTP để behavior nhất quán giữa 80 và 443.
+    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      name: api-gateway/eg/https
+      operation:
+        op: add
+        path: "/filter_chains/0/filters/0/typed_config/http_filters/0"
+        value:
+          name: envoy.filters.http.compressor
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
+            compressor_library:
+              name: text_optimized
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.compression.gzip.compressor.v3.Gzip
+                memory_level: 5
+                compression_level: BEST_SPEED
+                compression_strategy: DEFAULT_STRATEGY
+                window_bits: 15
+                chunk_size: 4096
+            request_direction_config:
+              common_config:
+                enabled:
+                  default_value: false
+                  runtime_key: request_direction_config_enabled
+            response_direction_config:
+              remove_accept_encoding_header: true
+              common_config:
+                enabled:
+                  default_value: true
+                  runtime_key: response_direction_config_enabled
+                min_content_length: 1024
+                content_type:
+                  - application/json
+                  - application/javascript
+                  - application/xhtml+xml
+                  - image/svg+xml
+                  - text/css
+                  - text/html
+                  - text/plain
+                  - text/xml
+              disable_on_etag_header: true
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
   name: custom-proxy-config
