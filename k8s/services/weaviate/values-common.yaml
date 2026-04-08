@@ -1,0 +1,90 @@
+image:
+  registry: docker.io
+  repository: semitechnologies/weaviate
+  tag: 1.36.5
+
+# it is possible to change the sysctl's 'vm.max_map_count' using initContainer for Weaviate,
+# the init Container runs before Weaviate Container and sets the value for the WHOLE node
+# to the one provided below.
+# it is possible to run additional initContainer before Weaviate is up and running. You can specify the
+# containers as a list in `extraInitContainers`, exactly how they are defined in a kubernetes manifest:
+#   https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+initContainers:
+  sysctlInitContainer:
+    enabled: true
+    sysctlVmMaxMapCount: 524288
+    image:
+      registry: docker.io
+      repo: alpine
+      tag: latest
+      pullPolicy: IfNotPresent
+  ensureFileOwnershipContainer:
+    # This init container sets the file ownerships of /var/lib/weaviate directory to the ones set in
+    # containerSecurityContext.runAsUser and containerSecurityContext.fsGroup settings to ensure that Weaviate is able
+    # to start in unprivileged configuration.
+    # Enable this init container only if Weaviate was configured previously without security context
+    # and now containerSecurityContext is provided to run Weaviate container with non-root user.
+    # Please be sure to set at least containerSecurityContext.runAsUser and containerSecurityContext.fsGroup.
+    enabled: false
+
+service:
+  name: weaviate
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+  type: ClusterIP
+
+grpcService:
+  enabled: false 
+
+# Số lượng api key bắt buộc phải bằng với số lượng users 
+# Weaviate sẽ tự động ghép cặp theo đúng thứ tự 
+# Hoặc 1 user có thể có nhiều api key 
+# Tuyệt đối không khai báo 3 api key và có 2 user hoặc 2 api key và 3 user
+authentication:
+  anonymous_access:
+    enabled: false
+  apikey:
+    enabled: true
+    #allowed_keys:
+    #  - TODO:NEED_REPLACE 
+    users:
+      - admin
+      # - readonly_user
+  oidc:
+    enabled: false
+
+authorization:
+  anonymous_access:
+    enabled: false
+  rbac:
+    enabled: false
+  admin_list:
+    enabled: true
+    users:
+      - admin
+    # read_only_user:
+    #   - readonly_user
+
+env:
+  AUTHENTICATION_APIKEY_ENABLED: 'true'
+envSecrets:
+  AUTHENTICATION_APIKEY_ALLOWED_KEYS: weaviate-secret
+
+query_defaults:
+  limit: 100
+debug: false
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        podAffinityTerm:
+          topologyKey: "kubernetes.io/hostname"
+          labelSelector:
+            matchExpressions:
+              - key: "app"
+                operator: In
+                values:
+                  - weaviate

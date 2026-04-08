@@ -1,0 +1,10 @@
+replicas: 3
+storage:
+  size: "5Gi"
+
+node_selector_value: "db"
+node_toleration_value: "db"
+node_toleration_effect: "NoSchedule"
+
+cpu_limit: "10"
+mem_limit: "10Gi"

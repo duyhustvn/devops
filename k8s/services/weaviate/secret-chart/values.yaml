@@ -1,0 +1,7 @@
+secret:
+  name: weaviate-secret
+  apiKeyLength: 32
+
+reflector:
+  allowedNamespaces:
+    - backend

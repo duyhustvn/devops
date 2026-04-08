@@ -1,0 +1,39 @@
+---
+environments:
+  devlocal:
+    values:
+      - envs/devlocal.yaml
+  lab:
+    values:
+      - envs/lab.yaml
+
+---
+releases:
+  - name: weaviate-secret
+    namespace: weaviate
+    chart: ./secret-chart  
+
+  - name: weaviate
+    namespace: weaviate
+    needs:
+      - weaviate/weaviate-secret
+    chart: ./charts/weaviate-17.7.1.tgz
+    values:
+      - values-common.yaml
+      - replicas: {{ .Values.replicas }}
+      - resources:
+          requests:
+            cpu: "500m" 
+            memory: "500Mi"
+          limits:
+            cpu: {{ .Values.cpu_limit | quote }}
+            memory: {{ .Values.mem_limit | quote }}
+      - persistence:
+          size: {{ .Values.storage.size }}
+      - nodeSelector:
+          dedicated: {{ .Values.node_selector_value }}
+      - tolerations:
+          - key: dedicated
+            operator: Equal
+            value: {{ .Values.node_toleration_value }} 
+            effect: {{ .Values.node_toleration_effect }}
