@@ -128,7 +128,7 @@ spec:
       volumes:
         - name: dify-proxy-volume
           configMap:
-            name: {{ include "dify.fullname "}}-proxy-ca
+            name: {{ include "dify.fullname" .}}-proxy-ca
 
         # ca-certs-store mount vào cả initContainers và containers 
         # initContainers gen ra file ca-certificates.crt rồi copy file đó vào shared volume ca-certs-store tại đường dẫn /cert-store

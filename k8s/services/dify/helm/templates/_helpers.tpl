@@ -138,7 +138,7 @@ commonBackendEnvs are for api and worker containers
 - name: REDIS_USE_SENTINEL
   value: "true"
 - name: REDIS_SENTINELS
-  value: "redis-headless.redis.svc.cluster.local:26379"
+  value: "redis-headless.redis.svc.cluster.local.:26379"
 - name: REDIS_SENTINEL_SERVICE_NAME
   value: "redis-master"
 - name: CELERY_USE_SENTINEL
@@ -154,7 +154,7 @@ commonBackendEnvs are for api and worker containers
   value: "26379"
 
 - name: CELERY_BROKER_URL
-  value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.redis.svc.cluster.local:26379/1"
+  value: "sentinel://:$(REDIS_PASSWORD)@redis-headless.redis.svc.cluster.local.:26379/1"
 
 - name: DB_USERNAME
   valueFrom:
@@ -181,9 +181,12 @@ commonBackendEnvs are for api and worker containers
 - name: VECTOR_STORE 
   value: "{{ .Values.vector_store.type }}"
 - name: WEAVIATE_ENDPOINT
-  value: "192.168.56.141:8080"
+  value: "weaviate-headless.weaviate.svc.cluster.local:80"
 - name: WEAVIATE_API_KEY
-  value: "WVF5YThaHlkYwhGUSmCRgsX3tD5ngdN8pkih"
+  valueFrom:
+    secretKeyRef:
+      name: weaviate-secret
+      key: AUTHENTICATION_APIKEY_ALLOWED_KEYS
 {{- end }}
 
 {{- if eq .Values.global.storageType "s3" }}

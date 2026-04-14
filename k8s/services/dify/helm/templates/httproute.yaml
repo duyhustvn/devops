@@ -7,12 +7,13 @@ metadata:
   annotations:
     "app.kubernetes.io/managed-by": "helm"
     "meta.helm.sh/release-name": "dify"
+    "meta.helm.sh/release-namespace": "backend"
 spec:
   parentRefs:
     - name: eg
       namespace: api-gateway
-  hostnames:
-    - "example.com"
+  # hostnames:
+  #   - "{{ .Values.global.host }}"
   rules:
     - matches:
         - path:

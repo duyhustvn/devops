@@ -12,9 +12,9 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "dify.fullname "}}-proxy-ca
+  name: {{ include "dify.fullname" .}}-proxy-ca
 data:
   # Tên key sẽ thành tên file khi mount vào container  
   proxy_ca.crt: |
-{{ .Values.proxy.ca_crt.content | ident 4 }}
+{{ .Values.proxy.ca_crt.content | indent 4 }}
 {{- end}}
