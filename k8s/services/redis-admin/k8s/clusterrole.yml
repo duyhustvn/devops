@@ -10,7 +10,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: pod-reader
-  namespace: redis
 rules:
 - apiGroups: [""]
   resources: ["pods"]
@@ -24,7 +23,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: pod-reader-binding
-  namespace: redis
 subjects:
 - kind: ServiceAccount
   name: redis-admin
