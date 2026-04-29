@@ -38,7 +38,7 @@ spec:
           - kind: Secret
             name: envoy-tls
     - name: redis-admin
-      protocol: HTTPS
+      protocol: HTTP
       port: 46379
       allowedRoutes:
         namespaces:
@@ -46,11 +46,6 @@ spec:
           selector:
             matchLabels:
               kubernetes.io/metadata.name: redis
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - kind: Secret
-            name: envoy-tls
 
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
