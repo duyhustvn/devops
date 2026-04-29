@@ -36,7 +36,13 @@ service:
   type: ClusterIP
 
 grpcService:
-  enabled: false 
+  enabled: true
+  name: weaviate-grpc
+  ports:
+    - name: grpc
+      protocol: TCP
+      port: 50051
+  type: ClusterIP
 
 # Số lượng api key bắt buộc phải bằng với số lượng users 
 # Weaviate sẽ tự động ghép cặp theo đúng thứ tự 
