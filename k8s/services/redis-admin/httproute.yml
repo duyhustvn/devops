@@ -1,0 +1,32 @@
+# ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redis-admin
+  namespace: redis
+  annotations:
+    "app.kubernetes.io/managed-by": "helm"
+    "meta.helm.sh/release-name": "redis-admin"
+    "meta.helm.sh/release-namespace": "redis"
+spec:
+  parentRefs:
+    - name: eg
+      namespace: api-gateway
+      sectionName: redis-admin # chỉ cho access qua redis-admin listener
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: redis-admin
+          port: 80
+          weight: 1
+      matches:
+        - path:
+            type: PathPrefix
+            value: /redis-admin
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /

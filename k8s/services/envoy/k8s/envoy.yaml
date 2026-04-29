@@ -37,6 +37,17 @@ spec:
         certificateRefs:
           - kind: Secret
             name: envoy-tls
+    - name: redis-admin
+      protocol: HTTPS
+      port: 46379
+      allowedRoutes:
+        namespaces:
+          from: redis
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: envoy-tls
 
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1

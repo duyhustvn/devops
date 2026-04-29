@@ -15,7 +15,7 @@ config:
       kubernetes:
         watchMode:
           type: Namespaces
-          namespaces: ["default", "api-gateway", "backend"]
+          namespaces: ["default", "api-gateway", "backend", "redis"] # list namespace mà Envoy Gateway sẽ theo dõi để tìm các Kubernetes resources liên quan đến Gateway API (HTTPRoute, GRPCRoute, TLSRoute, v.v.).
     extensionApis:
       enableEnvoyPatchPolicy: true
 
