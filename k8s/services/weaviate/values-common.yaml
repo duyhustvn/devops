@@ -69,6 +69,12 @@ authorization:
 
 env:
   AUTHENTICATION_APIKEY_ENABLED: 'true'
+  # OpenTelemetry tracing (Weaviate dùng prefix EXPERIMENTAL_OTEL_)
+  EXPERIMENTAL_OTEL_ENABLED: "true"
+  EXPERIMENTAL_OTEL_SERVICE_NAME: "weaviate"
+  EXPERIMENTAL_OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger-x-collector:4317"  # gRPC không dùng http:// prefix (code tự strip)
+  EXPERIMENTAL_OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  EXPERIMENTAL_OTEL_TRACES_SAMPLER_ARG: "1.0"  # 100% - giảm xuống 0.1 (10%) ở production
 envSecrets:
   AUTHENTICATION_APIKEY_ALLOWED_KEYS: weaviate-secret
 
