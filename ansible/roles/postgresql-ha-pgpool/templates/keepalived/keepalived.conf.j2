@@ -1,0 +1,47 @@
+# Keepalived config — quản lý VIP cho pgpool cluster
+# pgpool watchdog vẫn chạy để phối hợp failover PostgreSQL
+# Keepalived theo dõi watchdog leader qua health check script
+
+vrrp_script check_pgpool_leader {
+    script "{{ keepalived_check_script_path }}"
+    interval {{ keepalived_check_interval }}
+    # Khi script fail (node không phải watchdog leader), giảm priority 50
+    # → node khác có base priority gốc sẽ thắng và lấy VIP
+    weight -50
+    fall 2
+    rise 2
+}
+
+vrrp_instance pgpool_vip {
+    state BACKUP
+    interface {{ device_interface }}
+    virtual_router_id {{ keepalived_virtual_router_id }}
+    priority {{ keepalived_priority }}
+    advert_int {{ keepalived_advert_int }}
+    # nopreempt: tránh VIP bounce khi node cũ recover
+    # VIP chỉ di chuyển khi watchdog bầu lại leader
+    nopreempt
+
+    # Unicast VRRP — tránh phụ thuộc multicast (không hoạt động trên nhiều cloud/VLAN)
+    unicast_src_ip {{ ansible_host }}
+    unicast_peer {
+{% for host in groups['all'] %}
+{% if hostvars[host]['ansible_host'] != ansible_host %}
+        {{ hostvars[host]['ansible_host'] }}
+{% endif %}
+{% endfor %}
+    }
+
+    authentication {
+        auth_type PASS
+        auth_pass {{ keepalived_auth_pass }}
+    }
+
+    virtual_ipaddress {
+        {{ vip }}/{{ cidr_prefix }} dev {{ device_interface }}
+    }
+
+    track_script {
+        check_pgpool_leader
+    }
+}

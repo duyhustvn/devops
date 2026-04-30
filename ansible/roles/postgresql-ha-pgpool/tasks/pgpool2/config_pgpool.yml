@@ -88,11 +88,11 @@
       shell: |
         sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u postgres '{{ postgres_pass }}'
 
-- block: # Watch dog
+- block: # Watch dog — VIP quản lý bởi pgpool watchdog
   - name: Copy escalation.sh
     template:
       src:  pgpool2/escalation.sh.j2
-      dest: '{{ pgpool_config_dir }}/escaltion.sh'
+      dest: '{{ pgpool_config_dir }}/escalation.sh'
       mode: '0700'
       owner: postgres
       group: postgres
@@ -103,6 +103,12 @@
       mode: '0440'
       owner: root
       group: root
+  when: vip_manager == 'watchdog'
+
+- block: # Keepalived — VIP quản lý bởi keepalived, watchdog chỉ phối hợp failover
+  - name: Config keepalived
+    include_tasks: ../keepalived/config_keepalived.yml
+  when: vip_manager == 'keepalived'
 
 - block: # Config log for Debian
   - name: Create pgpool log file

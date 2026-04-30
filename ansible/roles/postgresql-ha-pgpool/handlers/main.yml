@@ -38,6 +38,12 @@
   when: ansible_os_family == "RedHat"
   listen: Restart PgPool
 
+- name: Restart keepalived
+  become: true
+  systemd:
+    name: keepalived
+    state: restarted
+
 - name: Clean DNF cache
   command:
     cmd: dnf clean all

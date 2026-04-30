@@ -34,3 +34,31 @@ proxy: ''
 cidr_prefix: 24
 
 exporter_deploy_dir: '/u01/exporter'
+
+# VIP Manager: 'watchdog' hoặc 'keepalived'
+# - watchdog: pgpool watchdog tự quản lý VIP (mặc định theo hướng dẫn pgpool)
+# - keepalived: keepalived quản lý VIP, watchdog chỉ phối hợp failover PostgreSQL
+vip_manager: watchdog
+
+# --- Watchdog tuning (áp dụng cho cả hai chế độ) ---
+# Upstream server để watchdog xác nhận mạng còn thông (gateway hoặc DNS)
+# Để trống sẽ khiến watchdog không phân biệt được isolated vs peer-down → dễ mất VIP
+trusted_servers: ''
+# Priority trong bầu chọn watchdog leader (số cao hơn = ưu tiên hơn)
+# Có thể override per-host trong inventory để chỉ định node nào làm leader
+wd_priority: 1
+# SSH timeout (giây) trong escalation.sh khi xóa VIP khỏi node cũ
+ssh_timeout: 15
+
+# --- Keepalived (chỉ dùng khi vip_manager == 'keepalived') ---
+keepalived_virtual_router_id: 51
+keepalived_advert_int: 1
+keepalived_auth_pass: pgpool_ha
+# Base priority — health check weight (-50) sẽ hạ node không phải leader xuống
+keepalived_priority: 100
+keepalived_check_interval: 2
+keepalived_check_script_path: /etc/keepalived/check_pgpool_leader.sh
+
+# --- PCP ---
+pgpool_pcp_port: 9898
+pgpool_pcp_user: pgpool

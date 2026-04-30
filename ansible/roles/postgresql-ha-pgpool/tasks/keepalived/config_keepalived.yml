@@ -1,0 +1,36 @@
+---
+- name: Install keepalived
+  package:
+    name: keepalived
+    state: present
+
+- name: Deploy .pcppass for root (dùng bởi health check script)
+  template:
+    src: keepalived/pcppass.j2
+    dest: /root/.pcppass
+    mode: '0600'
+    owner: root
+    group: root
+
+- name: Deploy check_pgpool_leader.sh
+  template:
+    src: keepalived/check_pgpool_leader.sh.j2
+    dest: '{{ keepalived_check_script_path }}'
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Deploy keepalived.conf
+  template:
+    src: keepalived/keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    mode: '0644'
+    owner: root
+    group: root
+  notify: Restart keepalived
+
+- name: Enable and start keepalived
+  systemd:
+    name: keepalived
+    state: started
+    enabled: yes

@@ -1,0 +1,15 @@
+#!/bin/bash
+# Health check script cho keepalived
+# Trả về 0 nếu node này là pgpool watchdog LEADER → keepalived giữ VIP
+# Trả về 1 nếu không phải leader → keepalived nhường VIP cho node khác
+#
+# pcp_watchdog_info output dòng 1: "<num_nodes> YES/NO <local_node_state>"
+# local_node_state = leader | standby | lost | ...
+
+STATUS=$(pcp_watchdog_info \
+    -h 127.0.0.1 \
+    -p {{ pgpool_pcp_port }} \
+    -U {{ pgpool_pcp_user }} \
+    2>/dev/null | awk 'NR==1{print $3}')
+
+[ "$STATUS" = "leader" ] && exit 0 || exit 1

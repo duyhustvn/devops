@@ -699,13 +699,17 @@ use_watchdog = on
 
 # -Connection to upstream servers -
 
+{% if trusted_servers %}
+trusted_servers = '{{ trusted_servers }}'
+{% else %}
 #trusted_servers = ''
+{% endif %}
                                     # trusted server list which are used
                                     # to confirm network connection
                                     # (hostA,hostB,hostC,...)
                                     # (change requires restart)
 
-#trusted_server_command = 'ping -q -c3 %h'
+trusted_server_command = 'ping -q -c3 %h'
                                     # Command to execute when communicate trusted server.
                                     # Special values:
                                     #   %h = host name specified by trusted_servers
@@ -725,7 +729,7 @@ pgpool_port{{ loop.index0 }} = 9999
                                     # (change requires restart)
 {% endfor %}
 
-#wd_priority = 1
+wd_priority = {{ wd_priority }}
                                     # priority of this watchdog in leader election
                                     # (change requires restart)
 
@@ -742,15 +746,15 @@ pgpool_port{{ loop.index0 }} = 9999
 
 # - Virtual IP control Setting -
 
+{% if vip_manager == 'watchdog' %}
 delegate_ip = '{{ vip }}'
-                                    # delegate IP address
-                                    # If this is empty, virtual IP never bring up.
+                                    # delegate IP address — watchdog quản lý VIP
                                     # (change requires restart)
 if_cmd_path = '{{ if_cmd_path }}'
                                     # path to the directory where if_up/down_cmd exists
                                     # If if_up/down_cmd starts with "/", if_cmd_path will be ignored.
                                     # (change requires restart)
-if_up_cmd = '/usr/bin/sudo {{ if_cmd_path }}/ip addr add $_IP_$/{{ cidr_prefix }} dev {{ device_interface  }} label {{ device_interface }}:0'
+if_up_cmd = '/usr/bin/sudo {{ if_cmd_path }}/ip addr add $_IP_$/{{ cidr_prefix }} dev {{ device_interface }} label {{ device_interface }}:0'
                                     # startup delegate IP command
                                     # (change requires restart)
 if_down_cmd = '/usr/bin/sudo {{ if_cmd_path }}/ip addr del $_IP_$/{{ cidr_prefix }} dev {{ device_interface }}'
@@ -763,6 +767,11 @@ arping_path = '{{ arping_path }}'
 arping_cmd = '/usr/bin/sudo {{ arping_path }}/arping -U $_IP_$ -w 1 -I {{ device_interface }}'
                                     # arping command
                                     # (change requires restart)
+{% else %}
+delegate_ip = ''
+                                    # VIP do keepalived quản lý — watchdog không giữ VIP
+                                    # (change requires restart)
+{% endif %}
 
 #ping_path = '/bin'
                                     # ping command path
@@ -777,9 +786,15 @@ arping_cmd = '/usr/bin/sudo {{ arping_path }}/arping -U $_IP_$ -w 1 -I {{ device
                                     # This should be off if client connects to pgpool
                                     # not using virtual IP.
                                     # (change requires restart)
-#wd_escalation_command = ''
+{% if vip_manager == 'watchdog' %}
+wd_escalation_command = '{{ pgpool_config_dir }}/escalation.sh'
                                     # Executes this command at escalation on new active pgpool.
                                     # (change requires restart)
+{% else %}
+#wd_escalation_command = ''
+                                    # Không cần khi keepalived quản lý VIP
+                                    # (change requires restart)
+{% endif %}
 #wd_de_escalation_command = ''
                                     # Executes this command when leader pgpool resigns from being leader.
                                     # (change requires restart)
