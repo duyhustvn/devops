@@ -1,0 +1,10 @@
+# postgresql user password variable format: {username}_pass
+postgres_pass: postgresPasswd
+pgpool_pass: pgpoolPasswd
+repl_pass: replPasswd
+application_pass: appPasswd
+readonly_pass: readonlyPasswd
+pcp_pass: pcpPasswd
+pgpoolkey_secret: secretStaging
+
+keepalived_auth_pass: kaAuthPasswd
