@@ -27,6 +27,15 @@ if_cmd_path: /sbin
 pgpool_conf_num_init_children: 32
 pgpool_conf_max_pool: 4
 
+# Nếu on thì các câu read sẽ được chia về replica
+# Nếu off thì gửi tất cả câu query về master  
+pgpool_conf_load_balance_mode: on
+# Semicolon separated list of query patterns
+# that should be sent to primary node
+# Regexp are accepted
+# valid for streaming replication mode only.
+pgpool_conf_primary_routing_query_pattern_list: ''
+
 ssh_key_file: id_rsa_pgpool
 
 proxy: ''
@@ -43,7 +52,7 @@ vip_manager: watchdog
 # --- Watchdog tuning (áp dụng cho cả hai chế độ) ---
 # Upstream server để watchdog xác nhận mạng còn thông (gateway hoặc DNS)
 # Để trống sẽ khiến watchdog không phân biệt được isolated vs peer-down → dễ mất VIP
-trusted_servers: ''
+pgpool_conf_trusted_servers: ''
 # Priority trong bầu chọn watchdog leader (số cao hơn = ưu tiên hơn)
 # Có thể override per-host trong inventory để chỉ định node nào làm leader
 wd_priority: 1

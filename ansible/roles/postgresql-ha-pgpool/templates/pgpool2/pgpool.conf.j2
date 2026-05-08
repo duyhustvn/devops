@@ -410,7 +410,7 @@ syslog_ident = 'pgpool'
 # LOAD BALANCING MODE
 #------------------------------------------------------------------------------
 
-#load_balance_mode = on
+load_balance_mode = {{ pgpool_conf_load_balance_mode }}
                                    # Activate load balancing mode
                                    # (change requires restart)
 #ignore_leading_white_space = on
@@ -428,7 +428,11 @@ syslog_ident = 'pgpool'
                                    # If it's volatile, the function is regarded as a
                                    # writing function.
 
-#primary_routing_query_pattern_list = ''
+{% if primary_routing_query_pattern_list %}
+primary_routing_query_pattern_list = '{{ pgpool_conf_primary_routing_query_pattern_list }}'
+{% else %}
+primary_routing_query_pattern_list = ''
+{% endif %}
                                    # Semicolon separated list of query patterns
                                    # that should be sent to primary node
                                    # Regexp are accepted
@@ -699,8 +703,8 @@ use_watchdog = on
 
 # -Connection to upstream servers -
 
-{% if trusted_servers %}
-trusted_servers = '{{ trusted_servers }}'
+{% if pgpool_conf_trusted_servers %}
+trusted_servers = '{{ pgpool_conf_trusted_servers }}'
 {% else %}
 #trusted_servers = ''
 {% endif %}
