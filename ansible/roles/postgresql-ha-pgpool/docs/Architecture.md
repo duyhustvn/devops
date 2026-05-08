@@ -282,12 +282,33 @@ journalctl -u keepalived -f
 
 ### Sau khi node phục hồi
 
-Khi một node down rồi phục hồi, pgpool sẽ không tự động đưa PostgreSQL của node đó vào cluster. Cần chạy online recovery:
+Có hai tình huống khác nhau:
+
+#### Standby bị restart (không có failover)
+
+pgpool tự động re-attach node sau khi PostgreSQL lên lại và streaming replication resume (`auto_failback = on`). Không cần can thiệp thủ công. Thời gian re-attach tối đa ~1 phút (`auto_failback_interval = 1min`).
+
+Kiểm tra trạng thái:
 
 ```bash
-# Từ node-db-01 (hoặc node đang là pgpool leader)
+pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n <node_id>
+```
+
+Node trở về trạng thái `up` khi pgpool xác nhận streaming đang đồng bộ.
+
+#### Old primary restart sau khi đã xảy ra failover
+
+Khi primary bị down và failover đã xảy ra (standby được promote lên làm primary mới), node cũ khi restart **không thể tự biết** nó cần trở thành standby của primary mới. Cần chạy online recovery thủ công:
+
+```bash
+# Từ pgpool leader node
 pcp_recovery_node -h 127.0.0.1 -p 9898 -U pgpool -n <node_id>
 ```
+
+Lệnh này sẽ:
+1. Chạy `recovery_1st_stage` — pg_basebackup từ primary mới sang node cần recover
+2. Chạy `pgpool_remote_start` — start PostgreSQL trên node đó
+3. Tự động attach node vào cluster
 
 Hoặc chạy lại Ansible tag `recover_standby`:
 
