@@ -54,13 +54,24 @@
             group: root
 
     - block:
-      - name: Install pgpool_recovery
+      # pgpool calls pgpool_recovery() by connecting to the 'postgres' or 'template1' database (recovery_user connects there).
+      # Extensions are per-database 
+      # Install in both template1 and postgresql
+      - name: Install pgpool_recovery in template1
         shell: |
           PGPASSWORD='{{ postgres_pass }}' psql -h localhost -U postgres -d template1 -c "CREATE EXTENSION IF NOT EXISTS pgpool_recovery"
-        register: result
-      - name: Show result of running create extension pgpool_recovery
+        register: result_template1
+      - name: Show result of running create extension pgpool_recovery in template1
         debug:
-          var: result
+          var: result_template1
+
+      - name: Install pgpool_recovery in postgres
+        shell: |
+          PGPASSWORD='{{ postgres_pass }}' psql -h localhost -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgpool_recovery"
+        register: result_postgres
+      - name: Show result of running create extension pgpool_recovery in postgres
+        debug:
+          var: result_postgres
       when: inventory_hostname == "node-db-01"
 
 - block: # Client authentication Configuration
