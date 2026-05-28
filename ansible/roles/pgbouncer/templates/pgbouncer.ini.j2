@@ -349,62 +349,126 @@ reserve_pool_timeout = {{ pgbouncer_reserve_pool_timeout }}
 ;;;
 
 ;; buffer for streaming packets
+{% if pgbouncer_pkt_buf != "" %}
+pkt_buf = {{ pgbouncer_pkt_buf }}
+{% else %}
 ;pkt_buf = 4096
+{% endif %}
 
 ;; man 2 listen
+{% if pgbouncer_listen_backlog != "" %}
+listen_backlog = {{ pgbouncer_listen_backlog }}
+{% else %}
 ;listen_backlog = 128
+{% endif %}
 
 ;; Max number pkt_buf to process in one event loop.
+{% if pgbouncer_sbuf_loopcnt != "" %}
+sbuf_loopcnt = {{ pgbouncer_sbuf_loopcnt }}
+{% else %}
 ;sbuf_loopcnt = 5
+{% endif %}
 
 ;; Maximum PostgreSQL protocol packet size.
+{% if pgbouncer_max_packet_size != "" %}
+max_packet_size = {{ pgbouncer_max_packet_size }}
+{% else %}
 ;max_packet_size = 2147483647
+{% endif %}
 
 ;; Set SO_REUSEPORT socket option
+{% if pgbouncer_so_reuseport != "" %}
+so_reuseport = {{ pgbouncer_so_reuseport }}
+{% else %}
 ;so_reuseport = 0
+{% endif %}
 
 ;; networking options, for info: man 7 tcp
 
 ;; Linux: Notify program about new connection only if there is also
 ;; data received.  (Seconds to wait.)  On Linux the default is 45, on
 ;; other OS'es 0.
+{% if pgbouncer_tcp_defer_accept != "" %}
+tcp_defer_accept = {{ pgbouncer_tcp_defer_accept }}
+{% else %}
 ;tcp_defer_accept = 0
+{% endif %}
 
 ;; In-kernel buffer size (Linux default: 4096)
+{% if pgbouncer_tcp_socket_buffer != "" %}
+tcp_socket_buffer = {{ pgbouncer_tcp_socket_buffer }}
+{% else %}
 ;tcp_socket_buffer = 0
+{% endif %}
 
 ;; whether tcp keepalive should be turned on (0/1)
+{% if pgbouncer_tcp_keepalive != "" %}
+tcp_keepalive = {{ pgbouncer_tcp_keepalive }}
+{% else %}
 ;tcp_keepalive = 1
+{% endif %}
 
 ;; The following options are Linux-specific.  They also require
 ;; tcp_keepalive=1.
 
 ;; Count of keepalive packets
+{% if pgbouncer_tcp_keepcnt != "" %}
+tcp_keepcnt = {{ pgbouncer_tcp_keepcnt }}
+{% else %}
 ;tcp_keepcnt = 0
+{% endif %}
 
 ;; How long the connection can be idle before sending keepalive
 ;; packets
+{% if pgbouncer_tcp_keepidle != "" %}
+tcp_keepidle = {{ pgbouncer_tcp_keepidle }}
+{% else %}
 ;tcp_keepidle = 0
+{% endif %}
 
 ;; The time between individual keepalive probes
+{% if pgbouncer_tcp_keepintvl != "" %}
+tcp_keepintvl = {{ pgbouncer_tcp_keepintvl }}
+{% else %}
 ;tcp_keepintvl = 0
+{% endif %}
 
 ;; How long may transmitted data remain unacknowledged before TCP
 ;; connection is closed (in milliseconds)
+{% if pgbouncer_tcp_user_timeout != "" %}
+tcp_user_timeout = {{ pgbouncer_tcp_user_timeout }}
+{% else %}
 ;tcp_user_timeout = 0
+{% endif %}
 
 ;; DNS lookup caching time
+{% if pgbouncer_dns_max_ttl != "" %}
+dns_max_ttl = {{ pgbouncer_dns_max_ttl }}
+{% else %}
 ;dns_max_ttl = 15
+{% endif %}
 
 ;; DNS zone SOA lookup period
+{% if pgbouncer_dns_zone_check_period != "" %}
+dns_zone_check_period = {{ pgbouncer_dns_zone_check_period }}
+{% else %}
 ;dns_zone_check_period = 0
+{% endif %}
 
 ;; DNS negative result caching time
+{% if pgbouncer_dns_nxdomain_ttl != "" %}
+dns_nxdomain_ttl = {{ pgbouncer_dns_nxdomain_ttl }}
+{% else %}
 ;dns_nxdomain_ttl = 15
+{% endif %}
 
 ;; Custom resolv.conf file, to set custom DNS servers or other options
 ;; (default: empty = use OS settings)
+{% if pgbouncer_resolv_conf != "" %}
+resolv_conf = {{ pgbouncer_resolv_conf }}
+{% else %}
 ;resolv_conf = /etc/pgbouncer/resolv.conf
+{% endif %}
 
 ;;;
 ;;; Random stuff
