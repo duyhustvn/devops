@@ -1,0 +1,13 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for roles/pgbouncer
+
+- name: Restart pgbouncer
+  ansible.builtin.service:
+    name: pgbouncer
+    state: restarted
+
+- name: Reload pgbouncer
+  ansible.builtin.service:
+    name: pgbouncer
+    state: reloaded

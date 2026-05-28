@@ -1,0 +1,152 @@
+;;;
+;;; PgBouncer configuration file
+;;; Managed by Ansible - do not edit manually
+;;;
+
+[databases]
+{% for db in pgbouncer_databases %}
+{{ db.name }} = {{ db.config }}
+{% endfor %}
+
+[users]
+{% for user in pgbouncer_users_list %}
+{{ user.name }} = {{ user.config }}
+{% endfor %}
+
+[pgbouncer]
+
+;;;
+;;; Administrative settings
+;;;
+
+logfile = {{ pgbouncer_logfile }}
+pidfile = {{ pgbouncer_pidfile }}
+
+;;;
+;;; Where to wait for clients
+;;;
+
+listen_addr = {{ pgbouncer_listen_addr }}
+listen_port = {{ pgbouncer_listen_port }}
+
+unix_socket_dir = {{ pgbouncer_unix_socket_dir }}
+
+;;;
+;;; TLS settings for accepting clients
+;;;
+
+client_tls_sslmode = {{ pgbouncer_client_tls_sslmode }}
+{% if pgbouncer_client_tls_ca_file %}
+client_tls_ca_file = {{ pgbouncer_client_tls_ca_file }}
+{% endif %}
+{% if pgbouncer_client_tls_key_file %}
+client_tls_key_file = {{ pgbouncer_client_tls_key_file }}
+{% endif %}
+{% if pgbouncer_client_tls_cert_file %}
+client_tls_cert_file = {{ pgbouncer_client_tls_cert_file }}
+{% endif %}
+
+;;;
+;;; TLS settings for connecting to backend databases
+;;;
+
+server_tls_sslmode = {{ pgbouncer_server_tls_sslmode }}
+{% if pgbouncer_server_tls_ca_file %}
+server_tls_ca_file = {{ pgbouncer_server_tls_ca_file }}
+{% endif %}
+{% if pgbouncer_server_tls_key_file %}
+server_tls_key_file = {{ pgbouncer_server_tls_key_file }}
+{% endif %}
+{% if pgbouncer_server_tls_cert_file %}
+server_tls_cert_file = {{ pgbouncer_server_tls_cert_file }}
+{% endif %}
+
+;;;
+;;; Authentication settings
+;;;
+
+auth_type = {{ pgbouncer_auth_type }}
+auth_file = {{ pgbouncer_auth_file }}
+
+;;;
+;;; Users allowed into database 'pgbouncer'
+;;;
+
+{% if pgbouncer_admin_users | length > 0 %}
+admin_users = {{ pgbouncer_admin_users | join(', ') }}
+{% endif %}
+{% if pgbouncer_stats_users | length > 0 %}
+stats_users = {{ pgbouncer_stats_users | join(', ') }}
+{% endif %}
+
+;;;
+;;; Pooler personality questions
+;;;
+
+pool_mode = {{ pgbouncer_pool_mode }}
+
+max_prepared_statements = {{ pgbouncer_max_prepared_statements }}
+
+server_reset_query = {{ pgbouncer_server_reset_query }}
+
+{% if pgbouncer_ignore_startup_parameters %}
+ignore_startup_parameters = {{ pgbouncer_ignore_startup_parameters }}
+{% endif %}
+
+;;;
+;;; Connection limits
+;;;
+
+max_client_conn = {{ pgbouncer_max_client_conn }}
+
+default_pool_size = {{ pgbouncer_default_pool_size }}
+
+min_pool_size = {{ pgbouncer_min_pool_size }}
+
+reserve_pool_size = {{ pgbouncer_reserve_pool_size }}
+
+reserve_pool_timeout = {{ pgbouncer_reserve_pool_timeout }}
+
+max_db_connections = {{ pgbouncer_max_db_connections }}
+
+max_user_connections = {{ pgbouncer_max_user_connections }}
+
+;;;
+;;; Logging
+;;;
+
+syslog = {{ pgbouncer_syslog }}
+syslog_facility = {{ pgbouncer_syslog_facility }}
+syslog_ident = {{ pgbouncer_syslog_ident }}
+
+log_connections = {{ pgbouncer_log_connections }}
+
+log_disconnections = {{ pgbouncer_log_disconnections }}
+
+log_pooler_errors = {{ pgbouncer_log_pooler_errors }}
+
+log_stats = {{ pgbouncer_log_stats }}
+
+verbose = {{ pgbouncer_verbose }}
+
+;;;
+;;; Timeouts
+;;;
+
+server_lifetime = {{ pgbouncer_server_lifetime }}
+
+server_idle_timeout = {{ pgbouncer_server_idle_timeout }}
+
+server_connect_timeout = {{ pgbouncer_server_connect_timeout }}
+
+server_login_retry = {{ pgbouncer_server_login_retry }}
+
+query_timeout = {{ pgbouncer_query_timeout }}
+
+query_wait_timeout = {{ pgbouncer_query_wait_timeout }}
+
+client_idle_timeout = {{ pgbouncer_client_idle_timeout }}
+
+client_login_timeout = {{ pgbouncer_client_login_timeout }}
+
+idle_transaction_timeout = {{ pgbouncer_idle_transaction_timeout }}

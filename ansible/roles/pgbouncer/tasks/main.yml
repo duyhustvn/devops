@@ -1,0 +1,56 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/pgbouncer
+
+- name: Install pgbouncer
+  ansible.builtin.apt:
+    name: pgbouncer
+    state: present
+    update_cache: true
+  become: true
+
+- name: Ensure pgbouncer log directory exists
+  ansible.builtin.file:
+    path: "{{ pgbouncer_logfile | dirname }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: true
+
+- name: Ensure pgbouncer pid directory exists
+  ansible.builtin.file:
+    path: "{{ pgbouncer_pidfile | dirname }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0775"
+  become: true
+
+- name: Deploy pgbouncer configuration
+  ansible.builtin.template:
+    src: pgbouncer.ini.j2
+    dest: "{{ pgbouncer_config_file }}"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: Reload pgbouncer
+
+- name: Deploy pgbouncer userlist
+  ansible.builtin.template:
+    src: userlist.txt.j2
+    dest: "{{ pgbouncer_auth_file }}"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  no_log: true
+  notify: Reload pgbouncer
+
+- name: Enable and start pgbouncer service
+  ansible.builtin.service:
+    name: pgbouncer
+    state: started
+    enabled: true
+  become: true
