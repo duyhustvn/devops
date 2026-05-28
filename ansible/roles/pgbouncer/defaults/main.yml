@@ -91,3 +91,7 @@ pgbouncer_server_tls_sslmode: prefer
 pgbouncer_server_tls_ca_file: ""
 pgbouncer_server_tls_key_file: ""
 pgbouncer_server_tls_cert_file: ""
+
+# systemd resource limits
+# Set to 0 to use system default (typically 1024)
+pgbouncer_limit_nofile: 65536

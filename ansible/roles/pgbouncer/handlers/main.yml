@@ -2,12 +2,19 @@
 ---
 # handlers file for roles/pgbouncer
 
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
 - name: Restart pgbouncer
   ansible.builtin.service:
     name: pgbouncer
     state: restarted
+  become: true
 
 - name: Reload pgbouncer
   ansible.builtin.service:
     name: pgbouncer
     state: reloaded
+  become: true

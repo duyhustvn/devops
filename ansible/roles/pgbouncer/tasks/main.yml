@@ -8,24 +8,9 @@
     state: present
     update_cache: true
   become: true
-
-- name: Ensure pgbouncer log directory exists
-  ansible.builtin.file:
-    path: "{{ pgbouncer_logfile | dirname }}"
-    state: directory
-    owner: postgres
-    group: postgres
-    mode: "0750"
-  become: true
-
-- name: Ensure pgbouncer pid directory exists
-  ansible.builtin.file:
-    path: "{{ pgbouncer_pidfile | dirname }}"
-    state: directory
-    owner: postgres
-    group: postgres
-    mode: "0775"
-  become: true
+  tags:
+    - pgbouncer
+    - pgbouncer_install
 
 - name: Deploy pgbouncer configuration
   ansible.builtin.template:
@@ -36,6 +21,9 @@
     mode: "0640"
   become: true
   notify: Reload pgbouncer
+  tags:
+    - pgbouncer
+    - pgbouncer_config
 
 - name: Deploy pgbouncer userlist
   ansible.builtin.template:
@@ -47,6 +35,39 @@
   become: true
   no_log: true
   notify: Reload pgbouncer
+  tags:
+    - pgbouncer
+    - pgbouncer_config
+    - pgbouncer_userlist
+
+- name: Create pgbouncer systemd override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/pgbouncer.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: pgbouncer_limit_nofile | int > 0
+  tags:
+    - pgbouncer
+    - pgbouncer_systemd
+
+- name: Configure pgbouncer systemd open files limit
+  ansible.builtin.template:
+    src: pgbouncer-override.conf.j2
+    dest: /etc/systemd/system/pgbouncer.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: pgbouncer_limit_nofile | int > 0
+  notify:
+    - Reload systemd daemon
+    - Restart pgbouncer
+  tags:
+    - pgbouncer
+    - pgbouncer_systemd
 
 - name: Enable and start pgbouncer service
   ansible.builtin.service:
@@ -54,3 +75,6 @@
     state: started
     enabled: true
   become: true
+  tags:
+    - pgbouncer
+    - pgbouncer_service
