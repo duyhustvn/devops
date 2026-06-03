@@ -10,10 +10,38 @@ pgdg_repo: https://apt.postgresql.org/pub/repos/apt
 
 # Postgresql
 postgresql_version: 16
+pg_port: 5432
 pg_data_dir: /u01/data/postgresql/{{ postgresql_version }}/main
 pg_config_dir: /etc/postgresql/{{ postgresql_version }}/main
 pg_home_dir: /var/lib/postgresql
 pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
+
+# PgBouncer — middle layer between Pgpool và PostgreSQL trên mỗi node
+# Pgpool kết nối tới pgbouncer trên node backend qua cổng này;
+# pgbouncer forward về PostgreSQL local trên {{ pg_port }}.
+# Lưu ý: pgbouncer KHÔNG hỗ trợ streaming replication protocol nên
+# pg_basebackup / pg_rewind / primary_conninfo phải dùng {{ pg_port }} trực tiếp.
+pgbouncer_port: 6432
+pgbouncer_config_dir: /etc/pgbouncer
+pgbouncer_listen_addr: '*'
+# session là an toàn nhất khi đứng sau pgpool (pgpool dùng prepared statements,
+# SET parameters, ...). Có thể override sang 'transaction' nếu workload phù hợp.
+pgbouncer_pool_mode: session
+pgbouncer_max_client_conn: 1000
+pgbouncer_default_pool_size: 50
+pgbouncer_min_pool_size: 0
+pgbouncer_reserve_pool_size: 5
+pgbouncer_reserve_pool_timeout: 5
+pgbouncer_server_idle_timeout: 600
+pgbouncer_auth_user: pgbouncer
+pgbouncer_auth_type: scram-sha-256
+pgbouncer_auth_query: 'SELECT usename, passwd FROM public.pgbouncer_get_auth($1)'
+# Danh sách database được khai báo trong [databases]. Mặc định '*' để wildcard
+# (mọi DB sẽ được forward về localhost:{{ pg_port }}).
+pgbouncer_databases:
+  - name: '*'
+    host: 127.0.0.1
+    port: '{{ pg_port }}'
 
 # Pgpool-II
 pgpool_version: 4.6

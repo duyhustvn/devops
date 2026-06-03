@@ -1,0 +1,117 @@
+---
+# Cấu hình pgbouncer trên mỗi node:
+#  - Setup auth_query function trong PostgreSQL (chỉ trên primary)
+#  - Lấy SCRAM hash của user pgbouncer từ pg_shadow (qua primary VIP của
+#    PostgreSQL ngay sau khi tạo user)
+#  - Render userlist.txt + pgbouncer.ini
+#  - Enable & start pgbouncer service
+
+- name: Setup pgbouncer auth function trong PostgreSQL
+  include_tasks: setup_pgbouncer_auth.yml
+  when: inventory_hostname == "node-db-01"
+
+- name: Đảm bảo thư mục config pgbouncer tồn tại
+  file:
+    path: '{{ pgbouncer_config_dir }}'
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+
+- name: Lấy SCRAM-SHA-256 hash của user pgbouncer từ pg_shadow
+  # Hash này sẽ được ghi vào userlist.txt để pgbouncer tự xác thực bản thân
+  # với PostgreSQL khi chạy auth_query.
+  shell: |
+    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
+      -tAc "SELECT passwd FROM pg_shadow WHERE usename = '{{ pgbouncer_auth_user }}'"
+  register: pgbouncer_auth_hash_query
+  changed_when: false
+  no_log: true
+
+- name: Set fact pgbouncer_auth_hash
+  set_fact:
+    pgbouncer_auth_hash: "{{ pgbouncer_auth_hash_query.stdout | trim }}"
+  no_log: true
+
+- name: Fail nếu không lấy được SCRAM hash của user pgbouncer
+  fail:
+    msg: "Không tìm thấy user '{{ pgbouncer_auth_user }}' trong pg_shadow. Đảm bảo bước config_psql_user đã chạy trên node-db-01."
+  when: pgbouncer_auth_hash | length == 0
+
+- name: Render pgbouncer userlist.txt
+  template:
+    src: 'pgbouncer/userlist.txt.j2'
+    dest: '{{ pgbouncer_config_dir }}/userlist.txt'
+    owner: postgres
+    group: postgres
+    mode: '0600'
+  notify: Reload PgBouncer
+
+- name: Render pgbouncer.ini
+  template:
+    src: 'pgbouncer/pgbouncer.ini.j2'
+    dest: '{{ pgbouncer_config_dir }}/pgbouncer.ini'
+    owner: postgres
+    group: postgres
+    mode: '0640'
+  notify: Reload PgBouncer
+
+- name: Đảm bảo thư mục unix socket /var/run/postgresql
+  file:
+    path: /var/run/postgresql
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '02775'
+
+- name: Đảm bảo thư mục log pgbouncer (RedHat)
+  file:
+    path: /var/log/pgbouncer
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: ansible_os_family == "RedHat"
+
+- name: Đảm bảo thư mục pid pgbouncer (RedHat)
+  file:
+    path: /var/run/pgbouncer
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0755'
+  when: ansible_os_family == "RedHat"
+
+- name: Override systemd unit để pgbouncer chạy bằng user postgres
+  # Mặc định gói pgbouncer chạy bằng user 'pgbouncer'. Trong cụm này ta đã
+  # đồng nhất sở hữu config/log/socket sang user postgres để khớp với
+  # unix_socket_dir = /var/run/postgresql.
+  block:
+    - name: Tạo thư mục drop-in cho pgbouncer.service
+      file:
+        path: /etc/systemd/system/pgbouncer.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Drop-in chỉ định User=postgres cho pgbouncer
+      copy:
+        dest: /etc/systemd/system/pgbouncer.service.d/override.conf
+        content: |
+          [Service]
+          User=postgres
+          Group=postgres
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart PgBouncer
+
+- name: Enable và start pgbouncer
+  systemd:
+    name: pgbouncer
+    enabled: yes
+    state: started
+    daemon_reload: yes

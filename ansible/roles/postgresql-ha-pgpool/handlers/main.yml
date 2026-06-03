@@ -44,6 +44,23 @@
     name: keepalived
     state: restarted
 
+- name: Reload systemd
+  become: true
+  systemd:
+    daemon_reload: yes
+
+- name: Restart PgBouncer
+  become: true
+  systemd:
+    name: pgbouncer
+    state: restarted
+
+- name: Reload PgBouncer
+  become: true
+  systemd:
+    name: pgbouncer
+    state: reloaded
+
 - name: Clean DNF cache
   command:
     cmd: dnf clean all

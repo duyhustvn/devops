@@ -31,6 +31,11 @@ NEW_MAIN_NODE_PGDATA="${10}"
 OLD_PRIMARY_NODE_HOST="${11}"
 OLD_PRIMARY_NODE_PORT="${12}"
 
+# Pgpool truyền các port của backend (= pgbouncer port). Mọi thao tác
+# trực tiếp với PostgreSQL (drop replication slot, pg_rewind, pg_basebackup)
+# phải dùng PG_PORT vì pgbouncer không proxy được streaming replication
+# protocol và một số lệnh admin.
+PG_PORT={{ pg_port }}
 PGHOME={{ pg_lib_dir }}
 REPL_SLOT_NAME=$(echo ${FAILED_NODE_HOST,,} | tr -- -. _)
 POSTGRESQL_STARTUP_USER=postgres
@@ -59,7 +64,7 @@ fi
 if [ $OLD_PRIMARY_NODE_ID != "-1" -a $FAILED_NODE_ID != $OLD_PRIMARY_NODE_ID ]; then
 
     # If Standby node is down, drop replication slot.
-    ${PGHOME}/bin/psql -h ${OLD_PRIMARY_NODE_HOST} -p ${OLD_PRIMARY_NODE_PORT} postgres \
+    ${PGHOME}/bin/psql -h ${OLD_PRIMARY_NODE_HOST} -p ${PG_PORT} postgres \
         -c "SELECT pg_drop_replication_slot('${REPL_SLOT_NAME}');"  >/dev/null 2>&1
 
     if [ $? -ne 0 ]; then

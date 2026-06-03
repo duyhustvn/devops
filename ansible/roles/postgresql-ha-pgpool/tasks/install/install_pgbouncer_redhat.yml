@@ -1,0 +1,7 @@
+---
+
+- name: Install PgBouncer
+  dnf:
+    name: pgbouncer
+    state: present
+    enablerepo: crb

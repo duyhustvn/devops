@@ -2,6 +2,7 @@
 postgres_pass: postgresPasswd
 pgpool_pass: pgpoolPasswd
 repl_pass: replPasswd
+pgbouncer_pass: pgbouncerPasswd
 application_pass: appPasswd
 readonly_pass: readonlyPasswd
 pcp_pass: pcpPasswd

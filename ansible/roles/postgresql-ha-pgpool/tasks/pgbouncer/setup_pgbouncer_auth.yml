@@ -1,0 +1,39 @@
+---
+# Tạo SECURITY DEFINER function public.pgbouncer_get_auth(text)
+# trong cả template1 và postgres database để pgbouncer auth_query hoạt động
+# với mọi DB client connect tới.
+# Chỉ chạy trên primary (node-db-01) — các standby sẽ nhận qua streaming
+# replication.
+
+- name: Render setup_pgbouncer_auth.sql
+  template:
+    src: 'pgbouncer/setup_pgbouncer_auth.sql.j2'
+    dest: '{{ pg_config_dir }}/setup_pgbouncer_auth.sql'
+    mode: '0600'
+    owner: postgres
+    group: postgres
+
+- name: Install pgbouncer auth function in template1
+  shell: |
+    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d template1 \
+      -v ON_ERROR_STOP=1 -f {{ pg_config_dir }}/setup_pgbouncer_auth.sql
+  register: result_pgb_auth_template1
+
+- name: Show result of installing pgbouncer auth function in template1
+  debug:
+    var: result_pgb_auth_template1
+
+- name: Install pgbouncer auth function in postgres
+  shell: |
+    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
+      -v ON_ERROR_STOP=1 -f {{ pg_config_dir }}/setup_pgbouncer_auth.sql
+  register: result_pgb_auth_postgres
+
+- name: Show result of installing pgbouncer auth function in postgres
+  debug:
+    var: result_pgb_auth_postgres
+
+- name: Remove setup_pgbouncer_auth.sql
+  file:
+    path: '{{ pg_config_dir }}/setup_pgbouncer_auth.sql'
+    state: absent

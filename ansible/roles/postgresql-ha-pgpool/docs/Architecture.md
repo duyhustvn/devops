@@ -1,8 +1,8 @@
-# Kiến trúc High Availability — PostgreSQL + pgpool-II
+# Kiến trúc High Availability — PostgreSQL + pgpool-II + pgbouncer
 
 ## Tổng quan
 
-Cụm bao gồm 3 node chạy song song PostgreSQL và pgpool-II trên cùng máy. pgpool-II đóng vai trò proxy và load balancer, đồng thời điều phối tự động failover khi node PostgreSQL primary bị sự cố.
+Cụm bao gồm 3 node chạy song song PostgreSQL, pgbouncer và pgpool-II trên cùng máy. pgpool-II đóng vai trò proxy và load balancer ở lớp ngoài, pgbouncer là connection pooler trung gian tới PostgreSQL local trên mỗi node, đồng thời pgpool điều phối tự động failover khi node PostgreSQL primary bị sự cố.
 
 ```
                         ┌─────────────────┐
@@ -10,21 +10,33 @@ Cụm bao gồm 3 node chạy song song PostgreSQL và pgpool-II trên cùng má
                         │  (VIP / VRRP)   │
                         └────────┬────────┘
                                  │
-                    pgpool leader nhận request
+                    pgpool leader nhận request (:9999)
                                  │
           ┌──────────────────────┼──────────────────────┐
           │                      │                      │
  ┌────────▼────────┐   ┌────────▼────────┐   ┌────────▼────────┐
  │    node-db-01   │   │    node-db-02   │   │    node-db-03   │
  │                 │   │                 │   │                 │
- │  pgpool-II      │   │  pgpool-II      │   │  pgpool-II      │
+ │  pgpool-II:9999 │   │  pgpool-II:9999 │   │  pgpool-II:9999 │
  │  (watchdog)     │◄──►  (watchdog)     │◄──►  (watchdog)     │
- │                 │   │                 │   │                 │
- │  PostgreSQL     │   │  PostgreSQL     │   │  PostgreSQL     │
+ │       │         │   │       │         │   │       │         │
+ │  pgbouncer:6432 │   │  pgbouncer:6432 │   │  pgbouncer:6432 │
+ │       │         │   │       │         │   │       │         │
+ │  PostgreSQL:5432│   │  PostgreSQL:5432│   │  PostgreSQL:5432│
  │  PRIMARY        │──►│  STANDBY        │──►│  STANDBY        │
  └─────────────────┘   └─────────────────┘   └─────────────────┘
-   streaming replication ────────────────────────────────────►
+   streaming replication (5432, kết nối thẳng PostgreSQL) ────►
 ```
+
+**Luồng kết nối client:**
+1. Client → VIP:9999 (pgpool leader)
+2. pgpool định tuyến query → `pgbouncer` trên node backend được chọn (`backend_portN = 6432`)
+3. pgbouncer multiplex kết nối → PostgreSQL local `127.0.0.1:5432`
+
+**Luồng kết nối nội bộ (replication / pgpool admin) — KHÔNG đi qua pgbouncer:**
+- `pg_basebackup`, `pg_rewind`, `primary_conninfo` của streaming replication: kết nối thẳng `PostgreSQL:5432` vì pgbouncer không hỗ trợ replication protocol.
+- Health check / `sr_check` của pgpool: đi qua pgbouncer (SQL thường).
+- Các script `failover.sh`, `follow_primary.sh`, `recovery_1st_stage`: hardcode dùng `PG_PORT={{ pg_port }}` cho mọi thao tác admin trực tiếp PostgreSQL.
 
 ---
 
@@ -43,11 +55,24 @@ Mỗi node chạy một tiến trình pgpool-II độc lập với các chức n
 
 | Chức năng | Mô tả |
 |-----------|-------|
-| Connection pooling | Giảm overhead tạo kết nối đến PostgreSQL |
+| Connection pooling | Pool kết nối tới `pgbouncer` của các node backend |
 | Load balancing | Phân phối query SELECT sang các standby |
-| Health check | Kiểm tra định kỳ PostgreSQL còn sống không |
+| Health check | Kiểm tra định kỳ backend (qua pgbouncer) còn sống không |
 | Failover | Trigger `failover.sh` khi phát hiện primary down |
 | Online recovery | Tự động khôi phục standby bằng `recovery_1st_stage` |
+
+### PgBouncer
+
+Mỗi node chạy thêm một tiến trình pgbouncer lắng nghe trên cổng `{{ pgbouncer_port }}` (mặc định 6432) và forward tới PostgreSQL local `127.0.0.1:{{ pg_port }}`. Vai trò:
+
+| Chức năng | Mô tả |
+|-----------|-------|
+| Multiplex kết nối | Gom nhiều kết nối từ pgpool về ít kết nối PostgreSQL hơn |
+| Giảm overhead fork backend | PostgreSQL fork 1 process / connection; pgbouncer giảm tải |
+| Pool mode | Mặc định `session` (an toàn với pgpool); có thể đổi `transaction` cho workload phù hợp |
+| Auth | scram-sha-256 với `auth_user = pgbouncer` + `auth_query` tra cứu `pg_shadow` qua function `public.pgbouncer_get_auth()` |
+
+> **Lưu ý quan trọng:** pgbouncer KHÔNG hỗ trợ PostgreSQL streaming replication protocol. Mọi thao tác `pg_basebackup`, `pg_rewind`, `primary_conninfo` đều bypass pgbouncer và kết nối thẳng PostgreSQL `:{{ pg_port }}`. Điều này đã được hardcode trong các script `failover.sh`, `follow_primary.sh`, `recovery_1st_stage` qua biến `PG_PORT`.
 
 ### pgpool Watchdog
 
@@ -242,6 +267,26 @@ trusted_servers: '192.168.1.1'
 | `ssh_timeout` | `15` | Timeout SSH trong `escalation.sh` khi xóa VIP node cũ |
 | `arping_path` | `/usr/bin` | Đường dẫn đến `arping` |
 | `if_cmd_path` | `/sbin` | Đường dẫn đến `ip` command |
+
+### Biến PgBouncer
+
+| Biến | Mặc định | Mô tả |
+|------|----------|-------|
+| `pg_port` | `5432` | Cổng PostgreSQL thực; dùng trực tiếp trong các script khi cần bypass pgbouncer |
+| `pgbouncer_port` | `6432` | Cổng pgbouncer trên mỗi node — pgpool kết nối backend qua cổng này |
+| `pgbouncer_listen_addr` | `*` | Địa chỉ pgbouncer lắng nghe |
+| `pgbouncer_pool_mode` | `session` | `session` / `transaction` / `statement`. Khuyến nghị `session` khi đứng sau pgpool |
+| `pgbouncer_max_client_conn` | `1000` | Số client connection tối đa pgbouncer chấp nhận |
+| `pgbouncer_default_pool_size` | `50` | Số server connection / (user, db) |
+| `pgbouncer_min_pool_size` | `0` | Số server connection idle giữ sẵn |
+| `pgbouncer_reserve_pool_size` | `5` | Pool dự phòng khi nghẽn |
+| `pgbouncer_reserve_pool_timeout` | `5` | Giây chờ trước khi cấp connection từ reserve pool |
+| `pgbouncer_server_idle_timeout` | `600` | Giây trước khi đóng server connection idle |
+| `pgbouncer_auth_user` | `pgbouncer` | Role PostgreSQL dùng cho `auth_query` |
+| `pgbouncer_auth_type` | `scram-sha-256` | Phương thức auth client → pgbouncer |
+| `pgbouncer_auth_query` | `SELECT usename, passwd FROM public.pgbouncer_get_auth($1)` | Câu query lookup credentials |
+| `pgbouncer_pass` | — | Mật khẩu của role `pgbouncer` trong PostgreSQL (đặt trong vault) |
+| `pgbouncer_databases` | (mọi DB → `127.0.0.1:{{ pg_port }}`) | Danh sách `[databases]` của pgbouncer.ini |
 
 ### Biến riêng cho `vip_manager: keepalived`
 

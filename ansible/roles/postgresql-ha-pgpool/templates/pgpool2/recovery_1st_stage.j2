@@ -13,6 +13,9 @@ PRIMARY_NODE_HOST="$7"
 
 PGHOME={{ pg_lib_dir }}
 REPLUSER=repl
+# Pgpool truyền port = pgbouncer port. pg_basebackup / primary_conninfo
+# phải kết nối thẳng PostgreSQL nên dùng PG_PORT.
+PG_PORT={{ pg_port }}
 REPL_SLOT_NAME=$(echo ${DEST_NODE_HOST,,} | tr -- -. _)
 POSTGRESQL_STARTUP_USER=postgres
 SSH_KEY_FILE={{ ssh_key_file }}
@@ -40,7 +43,7 @@ echo DEST_NODE_PGDATA: $DEST_NODE_PGDATA
 echo RECOVERYCONF: $RECOVERYCONF
 
 ## Create replication slot "${REPL_SLOT_NAME}"
-${PGHOME}/bin/psql -h ${PRIMARY_NODE_HOST} -p ${PRIMARY_NODE_PORT} postgres \
+${PGHOME}/bin/psql -h ${PRIMARY_NODE_HOST} -p ${PG_PORT} postgres \
     -c "SELECT pg_create_physical_replication_slot('${REPL_SLOT_NAME}');"  >/dev/null 2>&1
 
 if [ $? -ne 0 ]; then
@@ -61,10 +64,10 @@ ssh -T ${SSH_OPTIONS} ${POSTGRESQL_STARTUP_USER}@$DEST_NODE_HOST "
 
     [ -d \"${DEST_NODE_PGDATA}\" ] && rm -rf ${DEST_NODE_PGDATA}
 
-    ${PGHOME}/bin/pg_basebackup -h $PRIMARY_NODE_HOST -U $REPLUSER -p $PRIMARY_NODE_PORT -D $DEST_NODE_PGDATA -X stream
+    ${PGHOME}/bin/pg_basebackup -h $PRIMARY_NODE_HOST -U $REPLUSER -p ${PG_PORT} -D $DEST_NODE_PGDATA -X stream
 
     cat > ${RECOVERYCONF} << EOT
-primary_conninfo = 'host=${PRIMARY_NODE_HOST} port=${PRIMARY_NODE_PORT} user=${REPLUSER} application_name=${DEST_NODE_HOST} passfile=''{{ pg_home_dir }}/.pgpass'''
+primary_conninfo = 'host=${PRIMARY_NODE_HOST} port=${PG_PORT} user=${REPLUSER} application_name=${DEST_NODE_HOST} passfile=''{{ pg_home_dir }}/.pgpass'''
 recovery_target_timeline = 'latest'
 primary_slot_name = '${REPL_SLOT_NAME}'
 EOT
@@ -78,13 +81,13 @@ EOT
     fi
 
     sed -i \
-        -e \"s/#*port = .*/port = ${DEST_NODE_PORT}/\" \
+        -e \"s/#*port = .*/port = ${PG_PORT}/\" \
         {{ pg_config_dir }}/postgresql.conf
 "
 
 if [ $? -ne 0 ]; then
 
-    ${PGHOME}/bin/psql -h ${PRIMARY_NODE_HOST} -p ${PRIMARY_NODE_PORT} postgres \
+    ${PGHOME}/bin/psql -h ${PRIMARY_NODE_HOST} -p ${PG_PORT} postgres \
         -c "SELECT pg_drop_replication_slot('${REPL_SLOT_NAME}');"  >/dev/null 2>&1
 
     if [ $? -ne 0 ]; then

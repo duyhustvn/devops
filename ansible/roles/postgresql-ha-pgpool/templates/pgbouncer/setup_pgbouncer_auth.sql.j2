@@ -1,0 +1,14 @@
+-- Setup pgbouncer auth_query support
+-- Tạo SECURITY DEFINER function cho pgbouncer tra cứu credentials user
+-- từ pg_shadow, giới hạn EXECUTE chỉ cho role pgbouncer.
+
+CREATE OR REPLACE FUNCTION public.pgbouncer_get_auth(p_usename TEXT)
+RETURNS TABLE(usename name, passwd text)
+LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT usename, passwd FROM pg_shadow WHERE usename = p_usename;
+$$;
+
+REVOKE ALL ON FUNCTION public.pgbouncer_get_auth(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.pgbouncer_get_auth(TEXT) TO {{ pgbouncer_auth_user }};

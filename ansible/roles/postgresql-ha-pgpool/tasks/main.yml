@@ -28,6 +28,16 @@
   tags: [ install_pgpool2, rc_all ]
 
 - block:
+    - name: Install PgBouncer
+      include_tasks: install/install_pgbouncer_debian.yml
+      when: ansible_os_family == "Debian"
+
+    - name: Install PgBouncer
+      include_tasks: install/install_pgbouncer_redhat.yml
+      when: ansible_os_family == "RedHat"
+  tags: [ install_pgbouncer, rc_all ]
+
+- block:
     - name: Init PostgreSQL
       include_tasks: psql/init_psql.yml
       when: ansible_os_family == "RedHat" and inventory_hostname == "node-db-01"
@@ -38,10 +48,20 @@
       include_tasks: ssh/setup_ssh.yml
   tags: [ config_ssh, rc_all ]
 
+  # config_psql phải chạy trước config_pgbouncer vì pgbouncer cần:
+  #   - user pgbouncer được tạo trong PostgreSQL (config_psql_user)
+  #   - pg_hba cho phép pgbouncer kết nối
 - block:
-    - name: Config PostgreSQL 
+    - name: Config PostgreSQL
       include_tasks: psql/config_psql.yml
   tags: [ config_psql, rc_all ]
+
+  # config_pgbouncer phải chạy trước config_pgpool vì pgpool sẽ trỏ backend
+  # tới pgbouncer port.
+- block:
+    - name: Config PgBouncer
+      include_tasks: pgbouncer/config_pgbouncer.yml
+  tags: [ config_pgbouncer, rc_all ]
 
 - block:
     - name: Config pgpool

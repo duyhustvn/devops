@@ -85,8 +85,9 @@ pcp_port = 9898
 {% for host in groups['all'] %}
 backend_hostname{{ loop.index0 }} = '{{ hostvars[host]['ansible_host'] }}'
                                    # Host name or IP address to connect to for backend {{ loop.index0 }}
-backend_port{{ loop.index0 }} = 5432
-                                   # Port number for backend {{ loop.index0 }}
+backend_port{{ loop.index0 }} = {{ pgbouncer_port }}
+                                   # Pgpool kết nối tới pgbouncer (port {{ pgbouncer_port }}) trên node backend;
+                                   # pgbouncer forward về PostgreSQL local ({{ pg_port }}).
 backend_weight{{ loop.index0 }} = 1
                                    # Weight for backend {{ loop.index0 }} (only in load balancing mode)
 backend_data_directory{{ loop.index0 }} = '{{ pg_data_dir }}'
