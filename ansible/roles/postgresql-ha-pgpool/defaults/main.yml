@@ -46,7 +46,6 @@ pgbouncer_server_idle_timeout: 600
 pgbouncer_max_prepared_statements: 0
 pgbouncer_auth_user: pgbouncer
 pgbouncer_auth_type: scram-sha-256
-pgbouncer_auth_dbname: postgres
 pgbouncer_auth_query: 'SELECT usename, passwd FROM public.pgbouncer_get_auth($1)'
 # Danh sách database được khai báo trong [databases]. Mặc định '*' để wildcard
 # (mọi DB sẽ được forward về localhost:{{ pg_port }}).

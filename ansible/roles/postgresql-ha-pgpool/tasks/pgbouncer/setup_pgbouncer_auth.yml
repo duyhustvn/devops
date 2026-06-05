@@ -1,7 +1,7 @@
 ---
 # Tạo SECURITY DEFINER function public.pgbouncer_get_auth(text)
-# trong cả template1 và postgres database để pgbouncer auth_query hoạt động
-# với mọi DB client connect tới.
+# trong template1, postgres và các database app để pgbouncer auth_query hoạt động
+# với database mà client đang connect tới.
 # Chỉ chạy trên primary (node-db-01) — các standby sẽ nhận qua streaming
 # replication.
 
@@ -13,25 +13,20 @@
     owner: postgres
     group: postgres
 
-- name: Install pgbouncer auth function in template1
-  shell: |
-    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d template1 \
-      -v ON_ERROR_STOP=1 -f {{ pg_config_dir }}/setup_pgbouncer_auth.sql
-  register: result_pgb_auth_template1
+- name: Build pgbouncer auth database list
+  set_fact:
+    pgbouncer_auth_databases: "{{ (['template1', 'postgres'] + (pg_allowed_user_db | default([]) | map(attribute='db') | unique | list)) | unique | list }}"
 
-- name: Show result of installing pgbouncer auth function in template1
-  debug:
-    var: result_pgb_auth_template1
-
-- name: Install pgbouncer auth function in postgres
+- name: Install pgbouncer auth function in databases
   shell: |
     PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
-      -v ON_ERROR_STOP=1 -f {{ pg_config_dir }}/setup_pgbouncer_auth.sql
-  register: result_pgb_auth_postgres
+      -v ON_ERROR_STOP=1 \
+      -c 'GRANT CONNECT ON DATABASE "{{ item }}" TO {{ pgbouncer_auth_user }}'
 
-- name: Show result of installing pgbouncer auth function in postgres
-  debug:
-    var: result_pgb_auth_postgres
+    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d "{{ item }}" \
+      -v ON_ERROR_STOP=1 -f {{ pg_config_dir }}/setup_pgbouncer_auth.sql
+  loop: "{{ pgbouncer_auth_databases }}"
+  no_log: true
 
 - name: Remove setup_pgbouncer_auth.sql
   file:
