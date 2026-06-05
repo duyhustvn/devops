@@ -149,6 +149,6 @@ host    replication     repl            {{ ip }}                scram-sha-256
 
 {% for item in pg_allowed_user_db %}
 {% for ip in pg_allowed_ips %}
-host {{ item.db }}  {{ item.user }} {{ ip }} scram-sha-256
+host {{ item.db | trim }}  {{ item.user | trim }} {{ ip }} scram-sha-256
 {% endfor %}
 {% endfor %}

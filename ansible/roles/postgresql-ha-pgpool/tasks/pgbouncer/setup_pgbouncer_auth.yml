@@ -15,18 +15,43 @@
 
 - name: Build pgbouncer auth database list
   set_fact:
-    pgbouncer_auth_databases: "{{ (['template1', 'postgres'] + (pg_allowed_user_db | default([]) | map(attribute='db') | unique | list)) | unique | list }}"
+    pgbouncer_auth_database_candidates: "{{ (['template1', 'postgres'] + (pg_allowed_user_db | default([]) | map(attribute='db') | map('trim') | unique | list)) | unique | list }}"
+
+- name: Check pgbouncer auth databases exist
+  shell: |
+    psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
+      -v ON_ERROR_STOP=1 \
+      -tAc "SELECT 1 FROM pg_database WHERE datname = '{{ item }}'"
+  environment:
+    PGPASSWORD: "{{ postgres_pass }}"
+  register: pgbouncer_auth_database_checks
+  changed_when: false
+  loop: "{{ pgbouncer_auth_database_candidates }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Build existing pgbouncer auth database list
+  set_fact:
+    pgbouncer_auth_databases: "{{ pgbouncer_auth_database_checks.results | selectattr('stdout', 'equalto', '1') | map(attribute='item') | list }}"
+
+- name: Show missing pgbouncer auth databases
+  debug:
+    msg: "Skip pgbouncer auth setup for missing databases: {{ pgbouncer_auth_database_checks.results | rejectattr('stdout', 'equalto', '1') | map(attribute='item') | list }}"
+  when: (pgbouncer_auth_database_checks.results | rejectattr('stdout', 'equalto', '1') | list | length) > 0
 
 - name: Install pgbouncer auth function in databases
   shell: |
-    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
+    psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
       -v ON_ERROR_STOP=1 \
       -c 'GRANT CONNECT ON DATABASE "{{ item }}" TO {{ pgbouncer_auth_user }}'
 
-    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d "{{ item }}" \
+    psql -h localhost -p {{ pg_port }} -U postgres -d "{{ item }}" \
       -v ON_ERROR_STOP=1 -f {{ pg_config_dir }}/setup_pgbouncer_auth.sql
+  environment:
+    PGPASSWORD: "{{ postgres_pass }}"
   loop: "{{ pgbouncer_auth_databases }}"
-  no_log: true
+  loop_control:
+    label: "{{ item }}"
 
 - name: Remove setup_pgbouncer_auth.sql
   file:

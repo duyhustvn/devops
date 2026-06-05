@@ -21,7 +21,7 @@ pg_allowed_user_db:
     table_privilege: "SELECT,INSERT,UPDATE,DELETE"
     sequence_privilege: "USAGE,SELECT,UPDATE"
   - db: dify_plugin
-    user: dify 
+    user: dify
     table_privilege: "SELECT"
     sequence_privilege: "USAGE,SELECT"
 

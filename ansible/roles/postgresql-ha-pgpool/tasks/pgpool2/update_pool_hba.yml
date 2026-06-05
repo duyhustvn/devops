@@ -11,5 +11,5 @@
     - name: Update pool_passwd
       shell: |
         sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u {{ item }} "{{ lookup('vars', item + '_pass') }}"
-      loop: "{{ pg_allowed_user_db | map(attribute='user') | unique | list }}"
+      loop: "{{ pg_allowed_user_db | map(attribute='user') | map('trim') | unique | list }}"
       no_log: true

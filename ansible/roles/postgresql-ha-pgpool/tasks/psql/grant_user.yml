@@ -14,9 +14,9 @@
       -f /tmp/grant_user.sql
   environment:
     PGPASSWORD: "{{ postgres_pass }}"
-    DBNAME: "{{ item.db }}"
-    APPUSER: "{{ item.user }}"
-    APPPASS: "{{ lookup('vars', item.user + '_pass') }}"
+    DBNAME: "{{ item.db | trim }}"
+    APPUSER: "{{ item.user | trim }}"
+    APPPASS: "{{ lookup('vars', (item.user | trim) + '_pass') }}"
     TABLE_PRIVILEGE: "{{ item.table_privilege }}"
     SEQUENCE_PRIVILEGE: "{{ item.sequence_privilege }}"
   loop: "{{ pg_allowed_user_db }}"
