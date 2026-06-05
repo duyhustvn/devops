@@ -99,6 +99,12 @@
       shell: |
         sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u postgres '{{ postgres_pass }}'
 
+    - name: Update pool_passwd with application users
+      shell: |
+        sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u {{ item }} "{{ lookup('vars', item + '_pass') }}"
+      loop: "{{ pg_allowed_user_db | map(attribute='user') | unique | list }}"
+      no_log: true
+
 - block: # Watch dog — VIP quản lý bởi pgpool watchdog
   - name: Copy escalation.sh
     template:
