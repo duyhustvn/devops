@@ -30,6 +30,10 @@ reserve_pool_size = {{ pgbouncer_reserve_pool_size }}
 reserve_pool_timeout = {{ pgbouncer_reserve_pool_timeout }}
 server_idle_timeout = {{ pgbouncer_server_idle_timeout }}
 
+; Ảo hoá prepared statements (pgbouncer >= 1.21). 0 = tắt.
+; Bắt buộc > 0 nếu chạy transaction mode với driver dùng server-side prepares.
+max_prepared_statements = {{ pgbouncer_max_prepared_statements }}
+
 ; Cho phép admin/stats từ user postgres và pgbouncer qua unix socket
 admin_users = postgres, {{ pgbouncer_auth_user }}
 stats_users = postgres, pgpool, {{ pgbouncer_auth_user }}

@@ -34,8 +34,8 @@ REPLUSER=repl
 PCP_USER=pgpool
 PGPOOL_PATH={{ pgpool_path }}
 PCP_PORT=9898
-# Pgpool truyền port = pgbouncer port. pg_rewind / primary_conninfo phải
-# kết nối thẳng PostgreSQL nên dùng PG_PORT.
+# pg_rewind / primary_conninfo phải kết nối thẳng PostgreSQL nên luôn dùng
+# PG_PORT, kể cả khi pgpool backend đang trỏ qua pgbouncer.
 PG_PORT={{ pg_port }}
 REPL_SLOT_NAME=$(echo ${NODE_HOST,,} | tr -- -. _)
 POSTGRESQL_STARTUP_USER=postgres

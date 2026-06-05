@@ -118,7 +118,9 @@
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 host    all             pgpool          samenet                 scram-sha-256
 host    all             postgres        samenet                 scram-sha-256
+{% if pgbouncer_enabled | bool %}
 host    all             {{ pgbouncer_auth_user }}       samenet                 scram-sha-256
+{% endif %}
 host    replication     repl            samenet                 scram-sha-256
 
 host    all             all             127.0.0.1/32            scram-sha-256

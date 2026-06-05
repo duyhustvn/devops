@@ -30,8 +30,9 @@ Cụm bao gồm 3 node chạy song song PostgreSQL, pgbouncer và pgpool-II trê
 
 **Luồng kết nối client:**
 1. Client → VIP:9999 (pgpool leader)
-2. pgpool định tuyến query → `pgbouncer` trên node backend được chọn (`backend_portN = 6432`)
-3. pgbouncer multiplex kết nối → PostgreSQL local `127.0.0.1:5432`
+2. Nếu `pgbouncer_enabled: true`, pgpool định tuyến query → `pgbouncer` trên node backend được chọn (`backend_portN = 6432`)
+3. Nếu `pgbouncer_enabled: false`, pgpool bỏ qua pgbouncer và kết nối trực tiếp PostgreSQL (`backend_portN = 5432`)
+4. Khi dùng pgbouncer, pgbouncer multiplex kết nối → PostgreSQL local `127.0.0.1:5432`
 
 **Luồng kết nối nội bộ (replication / pgpool admin) — KHÔNG đi qua pgbouncer:**
 - `pg_basebackup`, `pg_rewind`, `primary_conninfo` của streaming replication: kết nối thẳng `PostgreSQL:5432` vì pgbouncer không hỗ trợ replication protocol.
@@ -273,7 +274,8 @@ trusted_servers: '192.168.1.1'
 | Biến | Mặc định | Mô tả |
 |------|----------|-------|
 | `pg_port` | `5432` | Cổng PostgreSQL thực; dùng trực tiếp trong các script khi cần bypass pgbouncer |
-| `pgbouncer_port` | `6432` | Cổng pgbouncer trên mỗi node — pgpool kết nối backend qua cổng này |
+| `pgbouncer_enabled` | `true` | Bật/tắt lớp pgbouncer. `true`: pgpool trỏ backend tới `pgbouncer_port`; `false`: pgpool trỏ backend trực tiếp tới `pg_port` |
+| `pgbouncer_port` | `6432` | Cổng pgbouncer trên mỗi node — chỉ dùng làm backend port của pgpool khi `pgbouncer_enabled: true` |
 | `pgbouncer_listen_addr` | `*` | Địa chỉ pgbouncer lắng nghe |
 | `pgbouncer_pool_mode` | `session` | `session` / `transaction` / `statement`. Khuyến nghị `session` khi đứng sau pgpool |
 | `pgbouncer_max_client_conn` | `1000` | Số client connection tối đa pgbouncer chấp nhận |
@@ -282,6 +284,7 @@ trusted_servers: '192.168.1.1'
 | `pgbouncer_reserve_pool_size` | `5` | Pool dự phòng khi nghẽn |
 | `pgbouncer_reserve_pool_timeout` | `5` | Giây chờ trước khi cấp connection từ reserve pool |
 | `pgbouncer_server_idle_timeout` | `600` | Giây trước khi đóng server connection idle |
+| `pgbouncer_max_prepared_statements` | `0` | Ảo hoá prepared statements (pgbouncer ≥ 1.21). Bắt buộc > 0 nếu chạy `transaction` mode với driver có server-side prepares (psycopg3, JDBC, asyncpg…). |
 | `pgbouncer_auth_user` | `pgbouncer` | Role PostgreSQL dùng cho `auth_query` |
 | `pgbouncer_auth_type` | `scram-sha-256` | Phương thức auth client → pgbouncer |
 | `pgbouncer_auth_query` | `SELECT usename, passwd FROM public.pgbouncer_get_auth($1)` | Câu query lookup credentials |
@@ -300,6 +303,80 @@ trusted_servers: '192.168.1.1'
 | `keepalived_check_script_path` | `/etc/keepalived/check_pgpool_leader.sh` | Đường dẫn health check script |
 | `pgpool_pcp_port` | `9898` | PCP port để health check query watchdog status |
 | `pgpool_pcp_user` | `pgpool` | PCP user |
+
+---
+
+## Khuyến nghị cho ứng dụng SQLAlchemy (Dify, Flask, FastAPI, …)
+
+Phần này tổng hợp các tinh chỉnh đã được kiểm chứng cho stack SQLAlchemy + psycopg2/psycopg3. Ví dụ minh hoạ dùng **Dify 1.12.1** (Flask + SQLAlchemy 2 + Alembic + Celery + Redis).
+
+### Vì sao Dify an toàn ở `transaction` mode
+
+| Yếu tố session-state có thể vỡ trong transaction mode | Dify 1.12.1 |
+|---|---|
+| `LISTEN` / `NOTIFY` (pub/sub PostgreSQL) | Không dùng — pub/sub đi qua Redis |
+| Advisory lock cross-transaction | Không dùng ở runtime (chỉ Alembic dùng khi migration) |
+| Temp table cross-transaction | Không dùng |
+| `WITH HOLD` cursor | Không dùng |
+| Server-side prepared statements | Không — `psycopg2` mặc định không prepare |
+| Session-level `SET` (search_path, isolation level…) | Không set ở engine level |
+
+→ `pgbouncer_pool_mode: transaction` là an toàn và cho throughput cao hơn rõ rệt.
+
+### Override trong inventory cho cluster Dify
+
+```yaml
+# group_vars/<dify_db_group>/main.yml
+pgbouncer_pool_mode: transaction
+pgbouncer_default_pool_size: 30          # connection/(user,db)/node tới PostgreSQL
+pgbouncer_max_client_conn: 500           # tổng client từ pgpool + ad-hoc tools
+# Bật ảo hoá prepared statements để bảo hiểm khi nâng cấp psycopg3 / thêm
+# service Java/Go khác trong tương lai (yêu cầu pgbouncer >= 1.21).
+pgbouncer_max_prepared_statements: 200
+```
+
+Quy tắc sizing: `pgbouncer_default_pool_size × số_node × số_(user,db) ≤ max_connections - reserved_connections`.
+
+### Alembic migration — BẮT BUỘC bypass pgpool & pgbouncer
+
+Alembic chạy schema migration (`flask db upgrade`) và gặp các vấn đề sau nếu đi qua pool:
+
+1. **DDL không-transaction**: `CREATE INDEX CONCURRENTLY`, `VACUUM`, `ALTER TYPE … ADD VALUE` (PG < 12) báo lỗi `cannot run inside a transaction block` khi bị pgbouncer wrap.
+2. **Advisory lock anti-concurrent-migration**: Alembic `SELECT pg_advisory_lock(2147483647)` để chống 2 instance cùng migrate. Lock này thuộc session — bị mất khi pgbouncer xoay connection.
+3. **Load balancing route nhầm standby**: pgpool có thể tưởng `SELECT` của Alembic là read-only và đẩy sang standby — DDL fail hoặc đọc schema cũ.
+4. **Timeout middle layer**: migration tạo index trên bảng lớn có thể chạy hàng chục phút — vượt health check timeout của pgpool/pgbouncer.
+
+**Cách triển khai** — tách migration thành job riêng trỏ thẳng PostgreSQL primary trên `:{{ pg_port }}`:
+
+```yaml
+# Ví dụ k8s / docker-compose — migration job
+dify_migration:
+  image: langgenius/dify-api:1.12.1
+  command: ["flask", "db", "upgrade"]
+  env:
+    DB_HOST: node-db-01     # primary trực tiếp (KHÔNG dùng VIP)
+    DB_PORT: 5432           # PostgreSQL trực tiếp (KHÔNG qua pgpool/pgbouncer)
+    DB_DATABASE: dify
+    DB_USERNAME: dify
+    DB_PASSWORD: ${DIFY_DB_PASSWORD}
+
+# Runtime của Dify api/worker — vẫn qua VIP của pgpool
+dify_api:
+  env:
+    DB_HOST: 192.168.1.100  # VIP
+    DB_PORT: 9999           # pgpool
+    DB_DATABASE: dify
+    DB_USERNAME: dify
+    DB_PASSWORD: ${DIFY_DB_PASSWORD}
+```
+
+> Nhớ thêm rule `pg_hba.conf` (hoặc inventory) cho phép user migration kết nối từ host chạy migration job trực tiếp tới PostgreSQL primary trên `:5432`.
+
+### Lưu ý SQLAlchemy engine config
+
+- Tránh đặt `isolation_level` ở engine level (sẽ phát `SET SESSION CHARACTERISTICS …` — mất khi đổi connection ở transaction mode). Nếu cần, dùng `engine.execution_options(isolation_level=...)` theo từng checkout.
+- Bật `pool_pre_ping=True` để SQLAlchemy detect connection chết (do pgbouncer/pgpool restart) và mở lại trong suốt.
+- Mặc định `READ COMMITTED` của PostgreSQL đủ cho hầu hết workflow của Dify.
 
 ---
 
