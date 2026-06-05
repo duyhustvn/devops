@@ -6,6 +6,10 @@
 #  - Render userlist.txt + pgbouncer.ini
 #  - Enable & start pgbouncer service
 
+- name: Ensure pgbouncer auth role exists in PostgreSQL
+  include_tasks: ensure_pgbouncer_user.yml
+  when: inventory_hostname == "node-db-01"
+
 - name: Setup pgbouncer auth function trong PostgreSQL
   include_tasks: setup_pgbouncer_auth.yml
   when: inventory_hostname == "node-db-01"
@@ -26,6 +30,9 @@
       -tAc "SELECT passwd FROM pg_shadow WHERE usename = '{{ pgbouncer_auth_user }}'"
   register: pgbouncer_auth_hash_query
   changed_when: false
+  retries: 10
+  delay: 2
+  until: pgbouncer_auth_hash_query.stdout | trim | length > 0
   no_log: true
 
 - name: Set fact pgbouncer_auth_hash
