@@ -1,15 +1,21 @@
 ---
 - name: Check pgbouncer auth role exists
   shell: |
-    sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '{{ pgbouncer_auth_user }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '{{ pgbouncer_auth_user }}'"
   register: pgbouncer_role_exists
   changed_when: false
   no_log: true
 
 - name: Create pgbouncer auth role
   shell: |
-    sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "CREATE ROLE {{ pgbouncer_auth_user }} WITH LOGIN PASSWORD '{{ pgbouncer_pass }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -v ON_ERROR_STOP=1 -c "CREATE ROLE {{ pgbouncer_auth_user }} WITH LOGIN PASSWORD '{{ pgbouncer_pass }}'"
   when: pgbouncer_role_exists.stdout | trim != "1"
   no_log: true
-

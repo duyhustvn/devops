@@ -1,35 +1,53 @@
 ---
 - name: Check pgpool role exists
   shell: |
-    sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'pgpool'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'pgpool'"
   register: pgpool_role_exists
   changed_when: false
   no_log: true
 
 - name: Create pgpool role
   shell: |
-    sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "CREATE ROLE pgpool WITH LOGIN PASSWORD '{{ pgpool_pass }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -v ON_ERROR_STOP=1 -c "CREATE ROLE pgpool WITH LOGIN PASSWORD '{{ pgpool_pass }}'"
   when: pgpool_role_exists.stdout | trim != "1"
   no_log: true
 
 - name: Check repl role exists
   shell: |
-    sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'repl'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'repl'"
   register: repl_role_exists
   changed_when: false
   no_log: true
 
 - name: Create repl role
   shell: |
-    sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "CREATE ROLE repl WITH REPLICATION LOGIN PASSWORD '{{ repl_pass }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -v ON_ERROR_STOP=1 -c "CREATE ROLE repl WITH REPLICATION LOGIN PASSWORD '{{ repl_pass }}'"
   when: repl_role_exists.stdout | trim != "1"
   no_log: true
 
 - name: Check pgbouncer auth role exists
   shell: |
-    sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '{{ pgbouncer_auth_user }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '{{ pgbouncer_auth_user }}'"
   register: pgbouncer_role_exists
   changed_when: false
   no_log: true
@@ -37,8 +55,11 @@
 
 - name: Create pgbouncer auth role
   shell: |
-    sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "CREATE ROLE {{ pgbouncer_auth_user }} WITH LOGIN PASSWORD '{{ pgbouncer_pass }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -v ON_ERROR_STOP=1 -c "CREATE ROLE {{ pgbouncer_auth_user }} WITH LOGIN PASSWORD '{{ pgbouncer_pass }}'"
   when:
     - pgbouncer_enabled | bool
     - pgbouncer_role_exists.stdout | trim != "1"
@@ -46,28 +67,42 @@
 
 - name: Check postgres password is set
   shell: |
-    sudo -u postgres psql -tAc "SELECT passwd IS NOT NULL FROM pg_shadow WHERE usename = 'postgres'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT passwd IS NOT NULL FROM pg_shadow WHERE usename = 'postgres'"
   register: postgres_password_set
   changed_when: false
   no_log: true
 
 - name: Set postgres password if missing
   shell: |
-    sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "ALTER USER postgres WITH PASSWORD '{{ postgres_pass }}'"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -v ON_ERROR_STOP=1 -c "ALTER USER postgres WITH PASSWORD '{{ postgres_pass }}'"
   when: postgres_password_set.stdout | trim != "t"
   no_log: true
 
 - name: Check pgpool has pg_monitor role
   shell: |
-    sudo -u postgres psql -tAc "SELECT pg_has_role('pgpool', 'pg_monitor', 'member')"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT pg_has_role('pgpool', 'pg_monitor', 'member')"
   register: pgpool_has_pg_monitor
   changed_when: false
   no_log: true
 
 - name: Grant pg_monitor to pgpool
   shell: |
-    sudo -u postgres psql -v ON_ERROR_STOP=1 \
-      -c "GRANT pg_monitor TO pgpool"
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -v ON_ERROR_STOP=1 -c "GRANT pg_monitor TO pgpool"
   when: pgpool_has_pg_monitor.stdout | trim != "t"
   no_log: true
