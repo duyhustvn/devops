@@ -61,7 +61,7 @@
     owner: postgres
     group: postgres
     mode: '0640'
-  notify: Reload PgBouncer
+  notify: Restart PgBouncer
 
 - name: Đảm bảo thư mục unix socket /var/run/postgresql
   file:
@@ -104,3 +104,6 @@
     enabled: yes
     state: started
     daemon_reload: yes
+
+- name: Apply PgBouncer config changes before configuring Pgpool
+  meta: flush_handlers

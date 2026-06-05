@@ -32,7 +32,9 @@ server_idle_timeout = {{ pgbouncer_server_idle_timeout }}
 
 ; Ảo hoá prepared statements (pgbouncer >= 1.21). 0 = tắt.
 ; Bắt buộc > 0 nếu chạy transaction mode với driver dùng server-side prepares.
+{% if (pgbouncer_max_prepared_statements | int) > 0 %}
 max_prepared_statements = {{ pgbouncer_max_prepared_statements }}
+{% endif %}
 
 ; Cho phép admin/stats từ user postgres và pgbouncer qua unix socket
 admin_users = postgres, {{ pgbouncer_auth_user }}
