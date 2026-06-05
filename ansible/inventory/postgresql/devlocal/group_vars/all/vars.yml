@@ -52,3 +52,5 @@ pg_conf_include_dir: conf.d
 
 pgpool_conf_num_init_children: 40
 pgpool_conf_max_pool: 4
+
+pgbouncer_enabled: false

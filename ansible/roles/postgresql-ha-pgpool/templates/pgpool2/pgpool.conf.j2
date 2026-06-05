@@ -434,7 +434,7 @@ load_balance_mode = {{ pgpool_conf_load_balance_mode }}
                                    # If it's volatile, the function is regarded as a
                                    # writing function.
 
-{% if primary_routing_query_pattern_list %}
+{% if pgpool_conf_primary_routing_query_pattern_list %}
 primary_routing_query_pattern_list = '{{ pgpool_conf_primary_routing_query_pattern_list }}'
 {% else %}
 primary_routing_query_pattern_list = ''
