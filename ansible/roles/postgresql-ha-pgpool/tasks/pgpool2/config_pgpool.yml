@@ -121,7 +121,7 @@
     include_tasks: ../keepalived/config_keepalived.yml
   when: vip_manager == 'keepalived'
 
-- block: # Config log for Debian
+- block: # Config log for Ubuntu
   - name: Create pgpool log file
     file:
       path: /var/log/pgpool.log
@@ -160,48 +160,6 @@
       owner: root
       group: root
       mode: '0644'
-  when: ansible_os_family == "Debian"
-
-- block: # Config log for Rocky Linux
-  - name: Create pgpool log file
-    file:
-      path: /var/log/pgpool_log/pgpool.log
-      state: touch
-      owner: postgres
-      group: postgres
-      mode: '0640'
-
-  - name: Configure rsyslog for pgpool
-    copy:
-      dest: /etc/rsyslog.d/99-pgpool.conf
-      content: |
-        local0.*    /var/log/pgpool_log/pgpool.log
-      owner: root
-      group: root
-      mode: '0644'
-    notify: Restart rsyslog
-
-  - name: Configure logrotate for pgpool
-    copy:
-      dest: /etc/logrotate.d/pgpool
-      content: |
-        /var/log/pgpool_log/pgpool.log {
-            weekly
-            missingok
-            rotate 7
-            compress
-            delaycompress
-            notifempty
-            create 640 postgres postgres
-            sharedscripts
-            postrotate
-                systemctl reload rsyslog >/dev/null 2>&1 || true
-            endscript
-        }
-      owner: root
-      group: root
-      mode: '0644'
-  when: ansible_os_family == "RedHat"
 
 - name: Config Pgpool
   template:

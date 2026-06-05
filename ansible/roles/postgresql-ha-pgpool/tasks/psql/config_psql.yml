@@ -17,7 +17,6 @@
     owner: postgres
     group: postgres
   notify: Restart PostgreSQL
-  when: ansible_os_family == "Debian" or (ansible_os_family == "RedHat" and inventory_hostname == "node-db-01")
 
 # To allow repl user without specifying password for streaming replication and online recovery, and execute pg_rewind using postgresql
 # We create the .pgpass file in postgres user's home directory and change the permission to 600 on each PostgreSQL server. 

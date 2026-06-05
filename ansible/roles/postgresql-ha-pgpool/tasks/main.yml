@@ -1,15 +1,17 @@
 #SPDX-License-Identifier: MIT-0
 ---
-# tasks file for roles/postgresql-ha-pgpool2
+# tasks file for roles/postgresql-ha-pgpool
+
+- name: Validate Ubuntu target
+  assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+    fail_msg: "Role postgresql-ha-pgpool chỉ hỗ trợ Ubuntu."
+  tags: [ always ]
 
 - block:
     - name: Install PostgreSQL
       include_tasks: install/install_postgresql_debian.yml
-      when: ansible_os_family == "Debian"
-
-    - name: Install PostgreSQL
-      include_tasks: install/install_postgresql_redhat.yml
-      when: ansible_os_family == "RedHat"
   tags: [ install_postgresql, rc_all ]
 
 - block:
@@ -20,32 +22,13 @@
 - block:
     - name: Install Pgpool2
       include_tasks: install/install_pgpool2_debian.yml
-      when: ansible_os_family == "Debian"
-
-    - name: Install Pgpool2
-      include_tasks: install/install_pgpool2_redhat.yml
-      when: ansible_os_family == "RedHat"
   tags: [ install_pgpool2, rc_all ]
 
 - block:
     - name: Install PgBouncer
       include_tasks: install/install_pgbouncer_debian.yml
-      when:
-        - pgbouncer_enabled | bool
-        - ansible_os_family == "Debian"
-
-    - name: Install PgBouncer
-      include_tasks: install/install_pgbouncer_redhat.yml
-      when:
-        - pgbouncer_enabled | bool
-        - ansible_os_family == "RedHat"
+      when: pgbouncer_enabled | bool
   tags: [ install_pgbouncer, rc_all ]
-
-- block:
-    - name: Init PostgreSQL
-      include_tasks: psql/init_psql.yml
-      when: ansible_os_family == "RedHat" and inventory_hostname == "node-db-01"
-  tags: [ init_psql, rc_all ]
 
 - block:
     - name: Config ssh between servers

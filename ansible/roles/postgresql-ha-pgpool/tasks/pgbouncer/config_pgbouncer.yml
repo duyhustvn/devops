@@ -64,24 +64,6 @@
     group: postgres
     mode: '02775'
 
-- name: Đảm bảo thư mục log pgbouncer (RedHat)
-  file:
-    path: /var/log/pgbouncer
-    state: directory
-    owner: postgres
-    group: postgres
-    mode: '0750'
-  when: ansible_os_family == "RedHat"
-
-- name: Đảm bảo thư mục pid pgbouncer (RedHat)
-  file:
-    path: /var/run/pgbouncer
-    state: directory
-    owner: postgres
-    group: postgres
-    mode: '0755'
-  when: ansible_os_family == "RedHat"
-
 - name: Override systemd unit để pgbouncer chạy bằng user postgres
   # Mặc định gói pgbouncer chạy bằng user 'pgbouncer'. Trong cụm này ta đã
   # đồng nhất sở hữu config/log/socket sang user postgres để khớp với

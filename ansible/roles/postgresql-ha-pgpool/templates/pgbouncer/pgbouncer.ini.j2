@@ -39,13 +39,8 @@ admin_users = postgres, {{ pgbouncer_auth_user }}
 stats_users = postgres, pgpool, {{ pgbouncer_auth_user }}
 
 ; Logging
-{% if ansible_os_family == 'Debian' %}
 logfile = /var/log/postgresql/pgbouncer.log
 pidfile = /var/run/postgresql/pgbouncer.pid
-{% else %}
-logfile = /var/log/pgbouncer/pgbouncer.log
-pidfile = /var/run/pgbouncer/pgbouncer.pid
-{% endif %}
 
 ; Ignore client/server timezone, encoding mismatch
 ignore_startup_parameters = extra_float_digits,options
