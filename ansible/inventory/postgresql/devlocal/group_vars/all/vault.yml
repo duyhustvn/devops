@@ -6,6 +6,7 @@ pgbouncer_pass: pgbouncerPasswd
 application_pass: appPasswd
 readonly_pass: readonlyPasswd
 pcp_pass: pcpPasswd
+dify_pass: difyPasswd
 pgpoolkey_secret: secretStaging
 
 keepalived_auth_pass: kaAuthPasswd

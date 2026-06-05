@@ -16,12 +16,12 @@ pg_allowed_user_db:
     table_privilege: "SELECT"
     sequence_privilege: "USAGE,SELECT"
 
-  - db: boilerplate
-    user: application
+  - db: dify
+    user: dify
     table_privilege: "SELECT,INSERT,UPDATE,DELETE"
     sequence_privilege: "USAGE,SELECT,UPDATE"
-  - db: boilerplate
-    user: readonly
+  - db: dify_plugin
+    user: dify 
     table_privilege: "SELECT"
     sequence_privilege: "USAGE,SELECT"
 
