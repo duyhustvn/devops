@@ -67,3 +67,9 @@
 #       include_tasks: recover_standby.yml
 #   when: inventory_hostname == "node-db-01"
 #   tags: [ recover_standby, rc_all ]
+
+# - block:
+#     - name: Update pool_hba of Pgpool
+#       include_tasks: pgpool2/update_pool_hba.yml
+#   notify: Restart PgPool
+#   tags: [ update_pool_hba ]
