@@ -70,8 +70,8 @@ Mỗi node chạy thêm một tiến trình pgbouncer lắng nghe trên cổng `
 |-----------|-------|
 | Multiplex kết nối | Gom nhiều kết nối từ pgpool về ít kết nối PostgreSQL hơn |
 | Giảm overhead fork backend | PostgreSQL fork 1 process / connection; pgbouncer giảm tải |
-| Pool mode | Mặc định `session` (an toàn với pgpool); có thể đổi `transaction` cho workload phù hợp |
-| Auth | scram-sha-256 với `auth_user = pgbouncer` + `auth_query` tra cứu `pg_shadow` qua function `public.pgbouncer_get_auth()` |
+| Pool mode | Mặc định role dùng `transaction`; đổi về `session` nếu workload phụ thuộc session-state |
+| Auth | scram-sha-256 với `auth_user = pgbouncer`, `auth_dbname = postgres` và `auth_query` tra cứu `pg_shadow` qua function `public.pgbouncer_get_auth()` |
 
 > **Lưu ý quan trọng:** pgbouncer KHÔNG hỗ trợ PostgreSQL streaming replication protocol. Mọi thao tác `pg_basebackup`, `pg_rewind`, `primary_conninfo` đều bypass pgbouncer và kết nối thẳng PostgreSQL `:{{ pg_port }}`. Điều này đã được hardcode trong các script `failover.sh`, `follow_primary.sh`, `recovery_1st_stage` qua biến `PG_PORT`.
 
@@ -277,7 +277,7 @@ trusted_servers: '192.168.1.1'
 | `pgbouncer_enabled` | `true` | Bật/tắt lớp pgbouncer. `true`: pgpool trỏ backend tới `pgbouncer_port`; `false`: pgpool trỏ backend trực tiếp tới `pg_port` |
 | `pgbouncer_port` | `6432` | Cổng pgbouncer trên mỗi node — chỉ dùng làm backend port của pgpool khi `pgbouncer_enabled: true` |
 | `pgbouncer_listen_addr` | `*` | Địa chỉ pgbouncer lắng nghe |
-| `pgbouncer_pool_mode` | `session` | `session` / `transaction` / `statement`. Khuyến nghị `session` khi đứng sau pgpool |
+| `pgbouncer_pool_mode` | `transaction` | `session` / `transaction` / `statement`. Đổi về `session` nếu workload phụ thuộc session-state |
 | `pgbouncer_max_client_conn` | `1000` | Số client connection tối đa pgbouncer chấp nhận |
 | `pgbouncer_default_pool_size` | `50` | Số server connection / (user, db) |
 | `pgbouncer_min_pool_size` | `0` | Số server connection idle giữ sẵn |
@@ -288,6 +288,8 @@ trusted_servers: '192.168.1.1'
 | `pgbouncer_auth_user` | `pgbouncer` | Role PostgreSQL dùng cho `auth_query` |
 | `pgbouncer_auth_type` | `scram-sha-256` | Phương thức auth client → pgbouncer |
 | `pgbouncer_auth_query` | `SELECT usename, passwd FROM public.pgbouncer_get_auth($1)` | Câu query lookup credentials |
+| `pgbouncer_auth_dbname` | `postgres` | Database dùng để chạy `auth_query`; tránh implicit lookup trong reserved database `pgbouncer` |
+| `pgbouncer_auth_password` | `{{ pgbouncer_pass }}` | Plaintext password chỉ cho role nội bộ `pgbouncer` trong `userlist.txt`; không chứa password app users |
 | `pgbouncer_pass` | — | Mật khẩu của role `pgbouncer` trong PostgreSQL (đặt trong vault) |
 | `pgbouncer_databases` | (mọi DB → `127.0.0.1:{{ pg_port }}`) | Danh sách `[databases]` của pgbouncer.ini |
 

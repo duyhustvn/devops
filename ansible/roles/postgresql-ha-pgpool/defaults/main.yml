@@ -47,6 +47,12 @@ pgbouncer_max_prepared_statements: 0
 pgbouncer_auth_user: pgbouncer
 pgbouncer_auth_type: scram-sha-256
 pgbouncer_auth_query: 'SELECT usename, passwd FROM public.pgbouncer_get_auth($1)'
+# Database dùng để chạy auth_query. Không để implicit vì client/admin có thể
+# connect tới reserved database "pgbouncer" và làm auth_query fail.
+pgbouncer_auth_dbname: postgres
+# Password plaintext chỉ cho role nội bộ pgbouncer trong userlist.txt. Role này
+# dùng để login PostgreSQL chạy auth_query; không chứa password app users.
+pgbouncer_auth_password: '{{ pgbouncer_pass }}'
 # Danh sách database được khai báo trong [databases]. Mặc định '*' để wildcard
 # (mọi DB sẽ được forward về localhost:{{ pg_port }}).
 pgbouncer_databases:

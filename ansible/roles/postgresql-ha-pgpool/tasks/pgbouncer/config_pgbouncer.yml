@@ -1,10 +1,17 @@
 ---
 # Cấu hình pgbouncer trên mỗi node:
 #  - Setup auth_query function trong PostgreSQL (chỉ trên primary)
-#  - Lấy SCRAM hash của user pgbouncer từ pg_shadow (qua primary VIP của
-#    PostgreSQL ngay sau khi tạo user)
-#  - Render userlist.txt + pgbouncer.ini
+#  - Render userlist.txt với plaintext password chỉ cho auth_user nội bộ
+#  - Render pgbouncer.ini
 #  - Enable & start pgbouncer service
+
+- name: Validate pgbouncer auth password
+  assert:
+    that:
+      - pgbouncer_auth_password is defined
+      - pgbouncer_auth_password | string | length > 0
+    fail_msg: "Biến pgbouncer_auth_password phải được cấu hình để PgBouncer auth_user login PostgreSQL chạy auth_query."
+  no_log: true
 
 - name: Ensure pgbouncer auth role exists in PostgreSQL
   include_tasks: ensure_pgbouncer_user.yml
@@ -22,29 +29,6 @@
     group: postgres
     mode: '0750'
 
-- name: Lấy SCRAM-SHA-256 hash của user pgbouncer từ pg_shadow
-  # Hash này sẽ được ghi vào userlist.txt để pgbouncer tự xác thực bản thân
-  # với PostgreSQL khi chạy auth_query.
-  shell: |
-    PGPASSWORD='{{ postgres_pass }}' psql -h localhost -p {{ pg_port }} -U postgres -d postgres \
-      -tAc "SELECT passwd FROM pg_shadow WHERE usename = '{{ pgbouncer_auth_user }}'"
-  register: pgbouncer_auth_hash_query
-  changed_when: false
-  retries: 10
-  delay: 2
-  until: pgbouncer_auth_hash_query.stdout | trim | length > 0
-  no_log: true
-
-- name: Set fact pgbouncer_auth_hash
-  set_fact:
-    pgbouncer_auth_hash: "{{ pgbouncer_auth_hash_query.stdout | trim }}"
-  no_log: true
-
-- name: Fail nếu không lấy được SCRAM hash của user pgbouncer
-  fail:
-    msg: "Không tìm thấy user '{{ pgbouncer_auth_user }}' trong pg_shadow. Đảm bảo pgbouncer auth role đã được tạo trên PostgreSQL primary và replication đã chạy."
-  when: pgbouncer_auth_hash | length == 0
-
 - name: Render pgbouncer userlist.txt
   template:
     src: 'pgbouncer/userlist.txt.j2'
@@ -53,6 +37,7 @@
     group: postgres
     mode: '0600'
   notify: Reload PgBouncer
+  no_log: true
 
 - name: Render pgbouncer.ini
   template:

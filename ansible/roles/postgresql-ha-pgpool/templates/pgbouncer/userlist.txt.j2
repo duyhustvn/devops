@@ -1,1 +1,1 @@
-"{{ pgbouncer_auth_user }}" "{{ pgbouncer_auth_hash }}"
+"{{ pgbouncer_auth_user | replace('"', '""') }}" "{{ pgbouncer_auth_password | replace('"', '""') }}"

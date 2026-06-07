@@ -20,6 +20,9 @@ auth_type = {{ pgbouncer_auth_type }}
 auth_file = {{ pgbouncer_config_dir }}/userlist.txt
 auth_user = {{ pgbouncer_auth_user }}
 auth_query = {{ pgbouncer_auth_query }}
+{% if pgbouncer_auth_dbname | default('') | length > 0 %}
+auth_dbname = {{ pgbouncer_auth_dbname }}
+{% endif %}
 
 ; Pool sizing
 pool_mode = {{ pgbouncer_pool_mode }}

@@ -59,7 +59,7 @@
       PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
         || sudo -u postgres psql -w "$@"
     }
-    run_psql -v ON_ERROR_STOP=1 -c "CREATE ROLE {{ pgbouncer_auth_user }} WITH LOGIN PASSWORD '{{ pgbouncer_pass }}'"
+    run_psql -v ON_ERROR_STOP=1 -c "CREATE ROLE {{ pgbouncer_auth_user }} WITH LOGIN PASSWORD '{{ pgbouncer_auth_password }}'"
   when:
     - pgbouncer_enabled | bool
     - pgbouncer_role_exists.stdout | trim != "1"
