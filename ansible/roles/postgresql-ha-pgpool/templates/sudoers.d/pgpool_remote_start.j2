@@ -1,3 +1,8 @@
 postgres ALL=(root) NOPASSWD: /bin/systemctl start postgresql@{{ postgresql_version }}-main.service
 postgres ALL=(root) NOPASSWD: /bin/systemctl restart postgresql@{{ postgresql_version }}-main.service
 postgres ALL=(root) NOPASSWD: /bin/systemctl stop postgresql@{{ postgresql_version }}-main.service
+{% if pgbouncer_enabled | bool %}
+postgres ALL=(root) NOPASSWD: /bin/systemctl start pgbouncer
+postgres ALL=(root) NOPASSWD: /bin/systemctl restart pgbouncer
+postgres ALL=(root) NOPASSWD: /bin/systemctl stop pgbouncer
+{% endif %}
