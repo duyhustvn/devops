@@ -8,11 +8,11 @@
 
 - name: Ensure pgbouncer auth role exists in PostgreSQL
   include_tasks: ensure_pgbouncer_user.yml
-  when: inventory_hostname == "node-db-01"
+  when: postgresql_is_primary | default(false) | bool
 
 - name: Setup pgbouncer auth function trong PostgreSQL
   include_tasks: setup_pgbouncer_auth.yml
-  when: inventory_hostname == "node-db-01"
+  when: postgresql_is_primary | default(false) | bool
 
 - name: Đảm bảo thư mục config pgbouncer tồn tại
   file:
@@ -42,7 +42,7 @@
 
 - name: Fail nếu không lấy được SCRAM hash của user pgbouncer
   fail:
-    msg: "Không tìm thấy user '{{ pgbouncer_auth_user }}' trong pg_shadow. Đảm bảo bước config_psql_user đã chạy trên node-db-01."
+    msg: "Không tìm thấy user '{{ pgbouncer_auth_user }}' trong pg_shadow. Đảm bảo pgbouncer auth role đã được tạo trên PostgreSQL primary và replication đã chạy."
   when: pgbouncer_auth_hash | length == 0
 
 - name: Render pgbouncer userlist.txt

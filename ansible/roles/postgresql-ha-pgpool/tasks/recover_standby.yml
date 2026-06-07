@@ -1,22 +1,19 @@
-- name: Recover standby node 1
+---
+- name: Detect PostgreSQL primary for standby recovery
+  include_tasks: psql/detect_primary.yml
+
+- name: Recover standby nodes
   expect:
-    command: pcp_recovery_node -h {{ vip }} -p 9898 -U pgpool -n 1 -W
+    command: "pcp_recovery_node -h {{ vip }} -p {{ pgpool_pcp_port }} -U {{ pgpool_pcp_user }} -n {{ hostvars[item].pgpool_node_id }} -W"
     responses:
       Password: "{{ pcp_pass }}\n"
-  register: result
+  loop: "{{ groups['all'] | difference([inventory_hostname]) }}"
+  loop_control:
+    label: "{{ item }} (node_id={{ hostvars[item].pgpool_node_id }})"
+  register: recover_standby_results
+  when: postgresql_is_primary | default(false) | bool
 
-- name: Show result
+- name: Show recovery results
   debug:
-    var: result.stdout
-
-
-- name: Recover standby node 2
-  expect:
-    command: pcp_recovery_node -h {{ vip }} -p 9898 -U pgpool -n 2 -W
-    responses:
-      Password: "{{ pcp_pass }}\n"
-  register: result
-
-- name: Show result
-  debug:
-    var: result.stdout
+    var: recover_standby_results
+  when: postgresql_is_primary | default(false) | bool

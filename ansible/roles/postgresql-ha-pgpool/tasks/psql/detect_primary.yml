@@ -1,0 +1,15 @@
+---
+- name: Detect local PostgreSQL primary
+  shell: |
+    run_psql() {
+      PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" "$@" \
+        || sudo -u postgres psql -w "$@"
+    }
+    run_psql -tAc "SELECT NOT pg_is_in_recovery()"
+  register: postgresql_primary_check
+  changed_when: false
+  no_log: true
+
+- name: Set PostgreSQL primary fact
+  set_fact:
+    postgresql_is_primary: "{{ postgresql_primary_check.stdout | trim == 't' }}"

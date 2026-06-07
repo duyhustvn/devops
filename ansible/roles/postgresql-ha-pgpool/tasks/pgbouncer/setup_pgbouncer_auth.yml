@@ -2,7 +2,7 @@
 # Tạo SECURITY DEFINER function public.pgbouncer_get_auth(text)
 # trong template1, postgres và các database app để pgbouncer auth_query hoạt động
 # với database mà client đang connect tới.
-# Chỉ chạy trên primary (node-db-01) — các standby sẽ nhận qua streaming
+# Chỉ chạy trên PostgreSQL primary — các standby sẽ nhận qua streaming
 # replication.
 
 - name: Render setup_pgbouncer_auth.sql

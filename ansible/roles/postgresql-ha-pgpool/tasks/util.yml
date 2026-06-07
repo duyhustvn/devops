@@ -1,4 +1,9 @@
 - block:
+    - name: Detect PostgreSQL primary
+      include_tasks: psql/detect_primary.yml
+  tags: [ grant_user ]
+
+- block:
     - name: Update pg_hba of PostgreSQL
       include_tasks: psql/update_pghba.yml
   tags: [ update_pghba ]
@@ -12,7 +17,7 @@
 - block:
     - name: Grant privilege
       include_tasks: psql/grant_user.yml
-  when: inventory_hostname == "node-db-01"
+  when: postgresql_is_primary | default(false) | bool
   tags: [ grant_user ]
 
 - block:

@@ -1,13 +1,13 @@
 - name: Config PostgreSQL users
   include_tasks: config_psql_user.yml
-  when: inventory_hostname == "node-db-01"
+  when: postgresql_is_primary | default(false) | bool
 
 - name: Config PostgreSQL pg_hba
   include_tasks: config_psql_auth.yml
 
   #- name: Create PostgreSQL extensions
   #  include_tasks: create_psql_extensions.yml
-  #  when: inventory_hostname == "node-db-01"
+  #  when: postgresql_is_primary | default(false) | bool
 
 - name: Config PostgreSQL
   template:

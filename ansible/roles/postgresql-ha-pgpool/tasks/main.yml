@@ -35,6 +35,11 @@
       include_tasks: ssh/setup_ssh.yml
   tags: [ config_ssh, rc_all ]
 
+- block:
+    - name: Detect PostgreSQL primary
+      include_tasks: psql/detect_primary.yml
+  tags: [ detect_primary, config_psql, config_pgbouncer, config_pgpool, rc_all ]
+
   # config_psql phải chạy trước config_pgbouncer khi bật pgbouncer vì cần:
   #   - user pgbouncer được tạo trong PostgreSQL (config_psql_user)
   #   - pg_hba cho phép pgbouncer kết nối
@@ -59,13 +64,13 @@
 # - block:
 #     - name: Deploy pgpool exporter
 #       include_tasks: pgpool2/exporter.yml
-#   when: inventory_hostname == "node-db-01"
+#   when: inventory_hostname == (groups['all'] | first)
 #   tags: [ deploy_exporter, rc_all ]
 
 # - block:
 #     - name: Recover standby nodes
 #       include_tasks: recover_standby.yml
-#   when: inventory_hostname == "node-db-01"
+#   when: inventory_hostname == (groups['all'] | first)
 #   tags: [ recover_standby, rc_all ]
 
 # - block:
