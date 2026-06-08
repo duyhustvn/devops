@@ -1,5 +1,7 @@
 # Kiến trúc High Availability — PostgreSQL + pgpool-II + pgbouncer
 
+Tài liệu liên quan: [Runbook vận hành](Operations.md)
+
 ## Tổng quan
 
 Cụm bao gồm 3 node chạy song song PostgreSQL, pgbouncer và pgpool-II trên cùng máy. pgpool-II đóng vai trò proxy và load balancer ở lớp ngoài, pgbouncer là connection pooler trung gian tới PostgreSQL local trên mỗi node, đồng thời pgpool điều phối tự động failover khi node PostgreSQL primary bị sự cố.
