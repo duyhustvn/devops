@@ -628,6 +628,29 @@ auth_query = SELECT usename, passwd FROM public.pgbouncer_get_auth($1)
 "pgbouncer" "<pgbouncer_pass>"
 ```
 
+## Nếu PgBouncer báo `too many open files`
+
+Kiểm tra giới hạn file descriptor thực tế mà systemd đang áp cho từng service:
+
+```bash
+sudo systemctl show pgbouncer -p LimitNOFILE
+sudo systemctl show pgpool2 -p LimitNOFILE
+sudo systemctl show postgresql@16-main.service -p LimitNOFILE
+```
+
+Kiểm tra pool sizing PgBouncer:
+
+```bash
+grep -E '^(max_client_conn|default_pool_size|min_pool_size|reserve_pool_size)' /etc/pgbouncer/pgbouncer.ini
+PGPASSWORD='<postgres_pass>' psql -h <backend-ip> -p 6432 -U postgres -d pgbouncer -c 'show pools'
+```
+
+Không đặt `pgbouncer_default_pool_size` bằng tổng client. `pgbouncer_max_client_conn` mới là giới hạn client vào PgBouncer; `default_pool_size` là số server connection tới PostgreSQL cho từng cặp `(user,database)`. Nếu tăng pool size lên mức cao, cần tăng `pg_conf_max_connection` tương ứng hoặc khai báo pool size riêng theo từng database. Sau khi chỉnh inventory/defaults, chạy lại:
+
+```bash
+ansible-playbook <playbook.yml> --tags config_psql,config_pgbouncer,config_pgpool
+```
+
 ## Checklist sau khi sửa sự cố
 
 ```bash

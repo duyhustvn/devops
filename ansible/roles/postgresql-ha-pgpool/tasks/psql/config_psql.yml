@@ -9,6 +9,29 @@
   #  include_tasks: create_psql_extensions.yml
   #  when: postgresql_is_primary | default(false) | bool
 
+- name: Configure PostgreSQL systemd file descriptor limit
+  block:
+    - name: Tạo thư mục drop-in cho PostgreSQL service
+      file:
+        path: /etc/systemd/system/postgresql@{{ postgresql_version }}-main.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Drop-in LimitNOFILE cho PostgreSQL
+      copy:
+        dest: /etc/systemd/system/postgresql@{{ postgresql_version }}-main.service.d/limits.conf
+        content: |
+          [Service]
+          LimitNOFILE={{ postgresql_limit_nofile }}
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart PostgreSQL
+
 - name: Config PostgreSQL
   template:
     src: 'postgresql/postgresql.conf.j2'

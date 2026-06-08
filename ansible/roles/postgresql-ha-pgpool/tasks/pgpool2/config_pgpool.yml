@@ -167,6 +167,29 @@
       group: root
       mode: '0644'
 
+- name: Configure Pgpool systemd file descriptor limit
+  block:
+    - name: Tạo thư mục drop-in cho pgpool2.service
+      file:
+        path: /etc/systemd/system/pgpool2.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Drop-in LimitNOFILE cho Pgpool
+      copy:
+        dest: /etc/systemd/system/pgpool2.service.d/limits.conf
+        content: |
+          [Service]
+          LimitNOFILE={{ pgpool_limit_nofile }}
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart PgPool
+
 - name: Config Pgpool
   template:
     src: pgpool2/pgpool.conf.j2

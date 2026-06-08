@@ -15,6 +15,9 @@ pg_data_dir: /u01/data/postgresql/{{ postgresql_version }}/main
 pg_config_dir: /etc/postgresql/{{ postgresql_version }}/main
 pg_home_dir: /var/lib/postgresql
 pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
+pg_conf_max_connection: 1000
+# systemd service limits. systemd services không dùng /etc/security/limits.d.
+postgresql_limit_nofile: 65536
 
 # PgBouncer — optional middle layer between Pgpool và PostgreSQL trên mỗi node.
 # true:  Pgpool kết nối tới pgbouncer trên node backend qua {{ pgbouncer_port }}.
@@ -34,11 +37,16 @@ pgbouncer_listen_addr: '*'
 # của PostgreSQL (vd app legacy, tool DBA, Alembic migration đi qua pool).
 pgbouncer_pool_mode: transaction
 pgbouncer_max_client_conn: 1000
-pgbouncer_default_pool_size: 50
+# default_pool_size là số server connection cho mỗi cặp (user, database), không
+# phải tổng toàn cụm. Đặt quá cao dễ gây "too many open files" và vượt
+# PostgreSQL max_connections.
+pgbouncer_default_pool_size: 900
 pgbouncer_min_pool_size: 0
 pgbouncer_reserve_pool_size: 5
 pgbouncer_reserve_pool_timeout: 5
 pgbouncer_server_idle_timeout: 600
+pgbouncer_backend_connection_margin: 10
+pgbouncer_limit_nofile: 65536
 # Ảo hoá prepared statements (yêu cầu pgbouncer >= 1.21).
 # Bắt buộc > 0 nếu app dùng server-side prepared statements
 # (psycopg3 mặc định, JDBC, asyncpg, …) trên pool_mode = transaction.
@@ -65,12 +73,13 @@ pgpool_version: 4.6
 pgpool_config_dir: /etc/pgpool2
 pgpool_path: /usr/sbin
 pgpool_log_dir: /var/log
+pgpool_limit_nofile: 65536
 
 arping_path: /usr/bin
 if_cmd_path: /sbin
 
-pgpool_conf_num_init_children: 32
-pgpool_conf_max_pool: 4
+pgpool_conf_num_init_children: 2000
+pgpool_conf_max_pool: 1
 
 # Nếu on thì các câu read sẽ được chia về replica
 # Nếu off thì gửi tất cả câu query về master  

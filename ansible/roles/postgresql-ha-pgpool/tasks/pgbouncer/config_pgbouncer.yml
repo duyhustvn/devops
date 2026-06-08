@@ -13,6 +13,38 @@
     fail_msg: "Biến pgbouncer_auth_password phải được cấu hình để PgBouncer auth_user login PostgreSQL chạy auth_query."
   no_log: true
 
+- name: Estimate PgBouncer server connection requirement
+  set_fact:
+    pgbouncer_estimated_server_connection_count: >-
+      {{
+        (pgbouncer_default_pool_size | int) + (pgbouncer_reserve_pool_size | int)
+      }}
+
+- name: Validate pgbouncer pool sizing
+  assert:
+    that:
+      - "(pgbouncer_max_client_conn | int) > 0"
+      - "(pgbouncer_default_pool_size | int) > 0"
+      - "(pgbouncer_min_pool_size | int) >= 0"
+      - "(pgbouncer_min_pool_size | int) <= (pgbouncer_default_pool_size | int)"
+      - "(pgbouncer_reserve_pool_size | int) >= 0"
+    fail_msg: >-
+      Cấu hình PgBouncer pool không hợp lệ. Kiểm tra
+      pgbouncer_max_client_conn, pgbouncer_default_pool_size,
+      pgbouncer_min_pool_size và pgbouncer_reserve_pool_size.
+
+- name: Validate pgbouncer pool size against PostgreSQL max_connections
+  assert:
+    that:
+      - "(pgbouncer_estimated_server_connection_count | int) <= ((pg_conf_max_connection | int) - (pgbouncer_backend_connection_margin | int))"
+    fail_msg: >-
+      Tổng server connection PgBouncer ước tính ({{
+      pgbouncer_estimated_server_connection_count }}) phải nhỏ hơn
+      pg_conf_max_connection sau khi trừ pgbouncer_backend_connection_margin.
+      Giảm pgbouncer_default_pool_size/reserve_pool_size hoặc tăng
+      pg_conf_max_connection.
+  when: pg_conf_max_connection is defined
+
 - name: Ensure pgbouncer auth role exists in PostgreSQL
   include_tasks: ensure_pgbouncer_user.yml
   when: postgresql_is_primary | default(false) | bool
@@ -76,6 +108,19 @@
           [Service]
           User=postgres
           Group=postgres
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart PgBouncer
+
+    - name: Drop-in LimitNOFILE cho pgbouncer
+      copy:
+        dest: /etc/systemd/system/pgbouncer.service.d/limits.conf
+        content: |
+          [Service]
+          LimitNOFILE={{ pgbouncer_limit_nofile }}
         owner: root
         group: root
         mode: '0644'

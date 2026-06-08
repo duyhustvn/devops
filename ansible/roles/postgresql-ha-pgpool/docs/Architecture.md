@@ -281,11 +281,13 @@ trusted_servers: '192.168.1.1'
 | `pgbouncer_listen_addr` | `*` | Địa chỉ pgbouncer lắng nghe |
 | `pgbouncer_pool_mode` | `transaction` | `session` / `transaction` / `statement`. Đổi về `session` nếu workload phụ thuộc session-state |
 | `pgbouncer_max_client_conn` | `1000` | Số client connection tối đa pgbouncer chấp nhận |
-| `pgbouncer_default_pool_size` | `50` | Số server connection / (user, db) |
+| `pgbouncer_default_pool_size` | `900` | Số server connection / (user, db) |
 | `pgbouncer_min_pool_size` | `0` | Số server connection idle giữ sẵn |
 | `pgbouncer_reserve_pool_size` | `5` | Pool dự phòng khi nghẽn |
 | `pgbouncer_reserve_pool_timeout` | `5` | Giây chờ trước khi cấp connection từ reserve pool |
 | `pgbouncer_server_idle_timeout` | `600` | Giây trước khi đóng server connection idle |
+| `pgbouncer_backend_connection_margin` | `10` | Số connection PostgreSQL chừa lại cho superuser/replication/admin khi validate pool size |
+| `pgbouncer_limit_nofile` | `65536` | `LimitNOFILE` của `pgbouncer.service`; đặt đủ cao cho client socket và server socket dự kiến |
 | `pgbouncer_max_prepared_statements` | `0` | Ảo hoá prepared statements (pgbouncer ≥ 1.21). Bắt buộc > 0 nếu chạy `transaction` mode với driver có server-side prepares (psycopg3, JDBC, asyncpg…). |
 | `pgbouncer_auth_user` | `pgbouncer` | Role PostgreSQL dùng cho `auth_query` |
 | `pgbouncer_auth_type` | `scram-sha-256` | Phương thức auth client → pgbouncer |
@@ -294,6 +296,14 @@ trusted_servers: '192.168.1.1'
 | `pgbouncer_auth_password` | `{{ pgbouncer_pass }}` | Plaintext password chỉ cho role nội bộ `pgbouncer` trong `userlist.txt`; không chứa password app users |
 | `pgbouncer_pass` | — | Mật khẩu của role `pgbouncer` trong PostgreSQL (đặt trong vault) |
 | `pgbouncer_databases` | (mọi DB → `127.0.0.1:{{ pg_port }}`) | Danh sách `[databases]` của pgbouncer.ini |
+
+### Biến systemd service limits
+
+| Biến | Mặc định | Mô tả |
+|------|----------|-------|
+| `postgresql_limit_nofile` | `65536` | `LimitNOFILE` cho `postgresql@{{ postgresql_version }}-main.service` |
+| `pgpool_limit_nofile` | `65536` | `LimitNOFILE` cho `pgpool2.service` |
+| `pgbouncer_limit_nofile` | `65536` | `LimitNOFILE` cho `pgbouncer.service` |
 
 ### Biến riêng cho `vip_manager: keepalived`
 
@@ -339,7 +349,30 @@ pgbouncer_max_client_conn: 500           # tổng client từ pgpool + ad-hoc to
 pgbouncer_max_prepared_statements: 200
 ```
 
-Quy tắc sizing: `pgbouncer_default_pool_size × số_node × số_(user,db) ≤ max_connections - reserved_connections`.
+Quy tắc validate sizing trên mỗi PostgreSQL node:
+
+```text
+pgbouncer_default_pool_size + pgbouncer_reserve_pool_size
+  ≤ pg_conf_max_connection - pgbouncer_backend_connection_margin
+```
+
+Không đặt `pgbouncer_default_pool_size` theo tổng client. Tổng client vào PgBouncer nằm ở `pgbouncer_max_client_conn`; `default_pool_size` là số server connection tới PostgreSQL cho từng cặp `(user,database)`. Nếu tăng pool size lên mức cao, cần tăng `pg_conf_max_connection` tương ứng hoặc khai báo pool size riêng theo từng database.
+
+Ví dụ `dify` có 1000 client vào database `dify`, còn `dify_plugin` chỉ có 2-3 connection:
+
+```yaml
+pgbouncer_max_client_conn: 1000
+pgbouncer_default_pool_size: 180
+```
+
+Với `pg_conf_max_connection: 200`, pool server connection phải chừa lại margin:
+
+```text
+pgbouncer_default_pool_size + pgbouncer_reserve_pool_size
+  ≤ 200 - pgbouncer_backend_connection_margin
+```
+
+`pgbouncer_max_client_conn: 1000` là nơi cho phép 1000 client vào PgBouncer; không cần đặt `pgbouncer_default_pool_size: 1000`.
 
 ### Alembic migration — BẮT BUỘC bypass pgpool & pgbouncer
 
