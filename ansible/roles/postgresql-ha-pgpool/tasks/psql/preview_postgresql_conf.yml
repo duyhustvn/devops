@@ -1,0 +1,29 @@
+---
+- name: Render PostgreSQL config preview
+  template:
+    src: 'postgresql/postgresql.conf.j2'
+    dest: '{{ postgresql_conf_preview_path }}'
+    mode: '0644'
+    owner: postgres
+    group: postgres
+
+- name: Compare active PostgreSQL config with preview
+  command:
+    argv:
+      - diff
+      - -u
+      - '{{ pg_config_dir }}/postgresql.conf'
+      - '{{ postgresql_conf_preview_path }}'
+  register: postgresql_conf_preview_diff
+  changed_when: false
+  failed_when: postgresql_conf_preview_diff.rc not in [0, 1]
+
+- name: Show PostgreSQL config diff
+  debug:
+    msg: "{{ postgresql_conf_preview_diff.stdout_lines | default([]) }}"
+  when: postgresql_conf_preview_diff.rc == 1
+
+- name: Show PostgreSQL config preview status
+  debug:
+    msg: "No difference between {{ pg_config_dir }}/postgresql.conf and {{ postgresql_conf_preview_path }}"
+  when: postgresql_conf_preview_diff.rc == 0

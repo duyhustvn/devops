@@ -18,6 +18,9 @@ pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
 pg_conf_max_connection: 1000
 # systemd service limits. systemd services không dùng /etc/security/limits.d.
 postgresql_limit_nofile: 65536
+# Render postgresql.conf candidate without replacing the active config.
+# Use with: --tags preview_postgresql_conf
+postgresql_conf_preview_path: /tmp/postgresql.conf.preview
 
 # PgBouncer — optional middle layer between Pgpool và PostgreSQL trên mỗi node.
 # true:  Pgpool kết nối tới pgbouncer trên node backend qua {{ pgbouncer_port }}.
@@ -74,6 +77,9 @@ pgpool_config_dir: /etc/pgpool2
 pgpool_path: /usr/sbin
 pgpool_log_dir: /var/log
 pgpool_limit_nofile: 65536
+# Render pgpool.conf candidate without replacing the active config.
+# Use with: --tags preview_pgpool_conf
+pgpool_conf_preview_path: /tmp/pgpool.conf.preview
 
 arping_path: /usr/bin
 if_cmd_path: /sbin

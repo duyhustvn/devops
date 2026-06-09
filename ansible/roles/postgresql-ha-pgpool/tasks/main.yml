@@ -48,6 +48,11 @@
       include_tasks: psql/config_psql.yml
   tags: [ config_psql, rc_all ]
 
+- block:
+    - name: Preview PostgreSQL config
+      include_tasks: psql/preview_postgresql_conf.yml
+  tags: [ preview_postgresql_conf ]
+
   # config_pgbouncer phải chạy trước config_pgpool vì pgpool sẽ trỏ backend
   # tới pgbouncer port nếu pgbouncer_enabled = true.
 - block:
@@ -60,6 +65,11 @@
     - name: Config pgpool
       include_tasks: pgpool2/config_pgpool.yml
   tags: [ config_pgpool, rc_all ]
+
+- block:
+    - name: Preview Pgpool config
+      include_tasks: pgpool2/preview_pgpool_conf.yml
+  tags: [ preview_pgpool_conf ]
 
 # - block:
 #     - name: Deploy pgpool exporter
