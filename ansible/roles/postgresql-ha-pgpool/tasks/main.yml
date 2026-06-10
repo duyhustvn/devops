@@ -31,6 +31,11 @@
   tags: [ install_pgbouncer, rc_all ]
 
 - block:
+    - name: Configure local hosts entries
+      include_tasks: config_hosts.yml
+  tags: [ config_hosts, rc_all ]
+
+- block:
     - name: Config ssh between servers
       include_tasks: ssh/setup_ssh.yml
   tags: [ config_ssh, rc_all ]

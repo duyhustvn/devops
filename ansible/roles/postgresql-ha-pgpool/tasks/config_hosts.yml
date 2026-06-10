@@ -1,0 +1,12 @@
+---
+- name: Ensure PostgreSQL HA nodes are resolvable locally
+  blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE MANAGED POSTGRESQL HA HOSTS"
+    block: |
+      {% for host in groups['all'] %}
+      {{ hostvars[host].node_ip | default(hostvars[host].ansible_host) }} {{ host }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: '0644'
