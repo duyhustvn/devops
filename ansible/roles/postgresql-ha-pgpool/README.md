@@ -1,38 +1,43 @@
-Role Name
-=========
+# postgresql-ha-pgpool
 
-A brief description of the role goes here.
+Ansible role triển khai cụm PostgreSQL HA với Pgpool-II, PgBouncer, watchdog/VIP và online recovery.
 
-Requirements
-------------
+## Tài liệu
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+- [Architecture](docs/Architecture.md): kiến trúc Pgpool-II, PgBouncer, PostgreSQL streaming replication, watchdog và VIP.
+- [Pgpool Hooks](docs/Pgpool%20Hooks.md): giải thích chi tiết `failover.sh`, `follow_primary.sh`, `escalation.sh` và Pgpool gọi chúng khi nào.
+- [Operations](docs/Operations.md): runbook kiểm tra, failover, recovery và xử lý sự cố.
+- [High Availability](docs/High%20Availability.md): hướng dẫn manual setup streaming replication.
+- [Change Data Directory](docs/Change%20Data%20Directory.md): đổi data directory PostgreSQL.
 
-Role Variables
---------------
+## Ghi chú nhanh
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+Luồng client mặc định:
 
-Dependencies
-------------
+```text
+client -> VIP:9999 -> Pgpool-II -> PgBouncer:6432 -> PostgreSQL:5432
+```
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+Các thao tác replication/admin như `pg_basebackup`, `pg_rewind`, `primary_conninfo`, promote và replication slot luôn đi thẳng PostgreSQL `:{{ pg_port }}`, không đi qua PgBouncer.
 
-Example Playbook
-----------------
+## Biến chính
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+Xem [defaults/main.yml](defaults/main.yml) và bảng biến trong [Architecture](docs/Architecture.md#biến-cấu-hình).
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+Các biến thường cần override:
 
-License
--------
+- `vip`
+- `device_interface`
+- `pgpool_conf_trusted_servers`
+- `wd_priority` theo từng host
+- `pgbouncer_pool_mode`
+- `pgbouncer_default_pool_size`
+- password trong vault: `postgres_pass`, `pgpool_pass`, `repl_pass`, `pgbouncer_pass`
 
-BSD
+## Tags hữu ích
 
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+```bash
+ansible-playbook site.yml --tags preview_pgpool_conf
+ansible-playbook site.yml --tags preview_postgresql_conf
+ansible-playbook site.yml --tags recover_standby
+```
