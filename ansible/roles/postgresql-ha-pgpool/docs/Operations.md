@@ -668,6 +668,60 @@ PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d pos
 "select application_name, client_addr, state, sent_lsn, replay_lsn from pg_stat_replication"
 ```
 
+Nếu vẫn có Pgpool sau khi promote bằng PostgreSQL, phải đồng bộ lại trạng thái Pgpool. `show pool_nodes` và `pcp_node_info` có hai lớp thông tin:
+
+- `pgpool_status`/`status`: trạng thái Pgpool đang giữ trong memory/status file.
+- `actual_status` và `actual_role`/`pg_role`: trạng thái thật Pgpool kiểm tra được từ PostgreSQL.
+
+Vì vậy sau khi promote/rebuild thủ công bằng PostgreSQL, có thể PostgreSQL đã đúng nhưng Pgpool vẫn để node `down`. Trường hợp mong muốn với node 2 là primary mới:
+
+```text
+node 2: pgpool_status up, actual_status up, pgpool_role primary, actual_role primary
+node 0: pgpool_status up, actual_status up, pgpool_role standby, actual_role standby
+node 1: pgpool_status up, actual_status up, pgpool_role standby, actual_role standby
+```
+
+Trước khi attach vào Pgpool, kiểm tra trực tiếp từ Pgpool node tới từng backend:
+
+```bash
+for h in <node0-ip> <node1-ip> <node2-ip>; do
+  echo "== $h =="
+  PGPASSWORD='<pgpool_pass>' psql -h "$h" -p 5432 -U pgpool -d postgres -c 'select 1'
+  PGPASSWORD='<postgres_pass>' psql -h "$h" -p 5432 -U postgres -d postgres -Atc \
+  "select inet_server_addr(), pg_is_in_recovery(), case when pg_is_in_recovery() then pg_last_wal_replay_lsn() else pg_current_wal_lsn() end"
+done
+```
+
+Trên node 0 và node 1, xác nhận chúng đang stream từ node 2:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <node0-ip> -p 5432 -U postgres -d postgres -x -c \
+"select status, conninfo, latest_end_lsn from pg_stat_wal_receiver"
+
+PGPASSWORD='<postgres_pass>' psql -h <node1-ip> -p 5432 -U postgres -d postgres -x -c \
+"select status, conninfo, latest_end_lsn from pg_stat_wal_receiver"
+```
+
+Sau đó attach theo thứ tự primary mới trước, standby sau:
+
+```bash
+pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n 2
+pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n 0
+pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n 1
+```
+
+Kiểm tra lại:
+
+```bash
+PGPASSWORD='<pgpool_pass>' psql -h <vip> -p 9999 -U pgpool -d postgres -c "show pool_nodes"
+
+pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n 0
+pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n 1
+pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n 2
+```
+
+Nếu `pcp_node_info` vẫn báo `actual_status = down` hoặc `unknown`, không attach được bằng PCP. Khi đó sửa lỗi kết nối/auth trước: PostgreSQL service, network, `pg_hba.conf`, password user `pgpool`, hoặc log Pgpool/PostgreSQL. Nếu `actual_status = up` nhưng `pgpool_status = down`, `pcp_attach_node` là thao tác đúng.
+
 Nếu muốn dùng `pg_rewind` thay vì `pg_basebackup`, chỉ làm khi data directory còn nguyên, server target đã stop sạch, và chắc chắn timeline có thể rewind. Với sự cố nặng hoặc không chắc lịch sử WAL, `pg_basebackup` an toàn hơn.
 
 ## Attach node thủ công
