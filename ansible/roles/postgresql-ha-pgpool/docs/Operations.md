@@ -668,49 +668,80 @@ PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d pos
 "select application_name, client_addr, state, sent_lsn, replay_lsn from pg_stat_replication"
 ```
 
-Nếu vẫn có Pgpool sau khi promote bằng PostgreSQL, phải đồng bộ lại trạng thái Pgpool. `show pool_nodes` và `pcp_node_info` có hai lớp thông tin:
+Nếu vẫn có Pgpool sau khi promote bằng PostgreSQL, bạn sẽ gặp một trạng thái đặc trưng: PostgreSQL đã đúng nhưng Pgpool nhận sai primary. Mục dưới giải thích nguyên nhân và cách xử lý.
 
-- `pgpool_status`/`status`: trạng thái Pgpool đang giữ trong memory/status file.
-- `actual_status` và `actual_role`/`pg_role`: trạng thái thật Pgpool kiểm tra được từ PostgreSQL.
+#### Pgpool nhận sai primary sau promote thủ công: `role` lệch `pg_role`
 
-Vì vậy sau khi promote/rebuild thủ công bằng PostgreSQL, có thể PostgreSQL đã đúng nhưng Pgpool vẫn để node `down`. Trường hợp mong muốn với node 2 là primary mới:
+`show pool_nodes`/`pcp_node_info` có hai lớp role khác nhau:
+
+- `role` / `pgpool_role`: phản ánh `primary_node_id` Pgpool giữ trong bộ nhớ — node mà Pgpool định tuyến write tới. Giá trị này **chỉ** được đặt lại khi Pgpool **khởi động** hoặc khi **chính Pgpool kích hoạt failover** (health check thấy primary chết → chạy `failover.sh` → `find_primary_node`).
+- `pg_role` / `actual_role`: role thật, Pgpool query trực tiếp `pg_is_in_recovery()` qua sr_check.
+
+Sau khi promote bằng PostgreSQL thuần, hai cột này **lệch nhau** dù tất cả node đều `up` (ví dụ node 2 là primary mới):
 
 ```text
-node 2: pgpool_status up, actual_status up, pgpool_role primary, actual_role primary
-node 0: pgpool_status up, actual_status up, pgpool_role standby, actual_role standby
-node 1: pgpool_status up, actual_status up, pgpool_role standby, actual_role standby
+node_id | hostname      | status | role    | pg_role
+0       | <node0-ip>    | up     | standby | standby
+1       | <node1-ip>    | up     | primary | standby   <- role sai (primary cũ)
+2       | <node2-ip>    | up     | standby | primary   <- pg_role: primary thật mới
 ```
 
-Trước khi attach vào Pgpool, kiểm tra trực tiếp từ Pgpool node tới từng backend:
+Kèm theo, log Pgpool lặp lại mỗi chu kỳ sr_check:
+
+```text
+sr_check_worker ... FATAL: Backend throw an error message
+DETAIL: ... HINT: BACKEND Error: "recovery is in progress"
+CONTEXT: while checking replication time lag
+```
+
+##### Vì sao xảy ra khi khôi phục bằng PostgreSQL thay vì qua Pgpool
+
+Khi khôi phục **chỉ bằng PostgreSQL** (mục 4 này), việc promote diễn ra hoàn toàn ở tầng PostgreSQL và **không đi qua cơ chế failover của Pgpool**, nên `primary_node_id` vẫn trỏ primary cũ. Mấu chốt: primary cũ bây giờ là một standby **khỏe mạnh** (`status up`), health check không bao giờ fail trên node đó → Pgpool **không có sự kiện nào để tự chạy lại `find_primary_node`** mà sửa. Pgpool "thấy" đúng sự thật ở cột `pg_role` nhưng không tự đổi `primary_node_id` theo. Nếu khôi phục **qua Pgpool/PCP** (mục 3) thì chính Pgpool điều phối failover nên cập nhật ngay — đây là lý do chỉ nhánh PostgreSQL-thuần mới dính lỗi này.
+
+Đây không chỉ là hiển thị xấu: Pgpool route mọi write tới node `role=primary` (node 1) — vốn là standby read-only → write qua VIP lỗi `cannot execute ... in a read-only transaction`. Log `recovery is in progress` cũng do sr_check chạy `pg_current_wal_lsn()` (hàm chỉ hợp lệ trên primary) lên node 1.
+
+##### Khắc phục: restart Pgpool để chạy lại `find_primary_node`
+
+`pcp_attach_node` **không** sửa được case này — nó chỉ chuyển node giữa `up`/`down`, không chạy lại phát hiện primary. Phải restart Pgpool.
+
+> **Gotcha watchdog:** với `use_watchdog = on`, **restart cuốn chiếu (rolling) KHÔNG đủ**. Một node Pgpool khi restart và join lại cluster watchdog đang còn quorum sẽ **đồng bộ `primary_node_id` cũ từ các member còn sống** thay vì tự phát hiện lại — nên trạng thái sai cứ được bảo tồn và lan lại. Dấu hiệu: `last_status_change` giống hệt nhau ở cả 3 node dù vừa restart. Phải **dừng Pgpool trên cả 3 node đồng thời**, rồi start lại từng node: node khởi động đầu tiên không tìm thấy quorum nào nên buộc chạy `find_primary_node` mới.
+
+Quy trình (PostgreSQL `:5432` vẫn chạy suốt; chỉ entrypoint VIP:9999 gián đoạn vài chục giây — mà write qua VIP vốn đã hỏng nên không mất thêm gì). Cách này chạy `find_primary_node` thuần, **không** gọi `failover.sh`/`follow_primary.sh` nên không rewind/rebuild standby:
+
+1. Dừng Pgpool trên cả 3 node:
 
 ```bash
-for h in <node0-ip> <node1-ip> <node2-ip>; do
-  echo "== $h =="
-  PGPASSWORD='<pgpool_pass>' psql -h "$h" -p 5432 -U pgpool -d postgres -c 'select 1'
-  PGPASSWORD='<postgres_pass>' psql -h "$h" -p 5432 -U postgres -d postgres -Atc \
-  "select inet_server_addr(), pg_is_in_recovery(), case when pg_is_in_recovery() then pg_last_wal_replay_lsn() else pg_current_wal_lsn() end"
-done
+sudo systemctl stop pgpool2
 ```
 
-Trên node 0 và node 1, xác nhận chúng đang stream từ node 2:
+2. Xác nhận đã dừng hẳn trên từng node (process hết, VIP đã rời):
 
 ```bash
-PGPASSWORD='<postgres_pass>' psql -h <node0-ip> -p 5432 -U postgres -d postgres -x -c \
-"select status, conninfo, latest_end_lsn from pg_stat_wal_receiver"
-
-PGPASSWORD='<postgres_pass>' psql -h <node1-ip> -p 5432 -U postgres -d postgres -x -c \
-"select status, conninfo, latest_end_lsn from pg_stat_wal_receiver"
+pgrep -a pgpool || echo stopped
 ```
 
-Sau đó attach theo thứ tự primary mới trước, standby sau:
+3. Start Pgpool trên một node trước (ưu tiên `wd_priority` cao nhất), kiểm tra log đã detect đúng primary:
 
 ```bash
-pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n 2
-pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n 0
-pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n 1
+sudo systemctl start pgpool2
+sudo journalctl -u pgpool2 --since '1 min ago' --no-pager | grep -iE 'find_primary|primary node'
 ```
 
-Kiểm tra lại:
+Mong đợi `find_primary_node: primary node is <new_primary_node_id>`. Verify ngay trên node đó (lúc này là cluster một thành viên):
+
+```bash
+PGPASSWORD='<pgpool_pass>' psql -h 127.0.0.1 -p 9999 -U pgpool -d postgres -c "show pool_nodes"
+```
+
+`role` và `pg_role` phải khớp nhau, và log sr_check hết lỗi `recovery is in progress`.
+
+4. Chỉ khi node đầu đã đúng, mới start 2 node còn lại; chúng sẽ sync trạng thái đúng từ node đầu:
+
+```bash
+sudo systemctl start pgpool2
+```
+
+5. Kiểm tra cuối + test write thật qua VIP:
 
 ```bash
 PGPASSWORD='<pgpool_pass>' psql -h <vip> -p 9999 -U pgpool -d postgres -c "show pool_nodes"
@@ -718,9 +749,12 @@ PGPASSWORD='<pgpool_pass>' psql -h <vip> -p 9999 -U pgpool -d postgres -c "show 
 pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n 0
 pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n 1
 pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n 2
+
+PGPASSWORD='<pgpool_pass>' psql -h <vip> -p 9999 -U pgpool -d postgres \
+  -c "create temp table _t(i int); insert into _t values(1); drop table _t;"
 ```
 
-Nếu `pcp_node_info` vẫn báo `actual_status = down` hoặc `unknown`, không attach được bằng PCP. Khi đó sửa lỗi kết nối/auth trước: PostgreSQL service, network, `pg_hba.conf`, password user `pgpool`, hoặc log Pgpool/PostgreSQL. Nếu `actual_status = up` nhưng `pgpool_status = down`, `pcp_attach_node` là thao tác đúng.
+Trạng thái đúng: chỉ node primary mới có `role=primary` và `pg_role=primary`, các standby `standby/standby`, tất cả `up`, write thành công.
 
 Nếu muốn dùng `pg_rewind` thay vì `pg_basebackup`, chỉ làm khi data directory còn nguyên, server target đã stop sạch, và chắc chắn timeline có thể rewind. Với sự cố nặng hoặc không chắc lịch sử WAL, `pg_basebackup` an toàn hơn.
 
