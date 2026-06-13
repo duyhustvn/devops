@@ -580,7 +580,56 @@ PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d pos
 
 Kỳ vọng dòng đầu là `f|...|...`.
 
-Rebuild từng node còn lại thành standby từ primary mới. Cách chắc chắn nhất là giữ lại data directory cũ bằng `mv`, rồi chạy `pg_basebackup` mới:
+Rebuild từng node còn lại thành standby từ primary mới. Mỗi standby cần một physical replication slot riêng trên primary mới. Slot này là chỗ primary giữ WAL cho đúng standby đó; nếu dùng nhầm slot của node khác hoặc drop slot đang active, standby khỏe có thể bị ảnh hưởng.
+
+`<slot_name>` là tên slot dành cho standby đang được rebuild, không phải tên/IP của primary mới. Quy ước trong role này: slot name lấy theo host/IP của standby cần rebuild, đổi chữ hoa thành chữ thường, đổi dấu chấm và gạch ngang thành gạch dưới. Ví dụ:
+
+| Standby cần rebuild | Slot name |
+|---------------------|-----------|
+| `192.168.56.112` | `192_168_56_112` |
+| `node-db-03` | `node_db_03` |
+
+Có thể tự tính nhanh:
+
+```bash
+standby_host='<standby-ip-or-hostname>'
+slot_name=$(printf '%s' "$standby_host" | tr '[:upper:]' '[:lower:]' | tr '.-' '__')
+echo "$slot_name"
+```
+
+Trước khi chạy `pg_basebackup`, kiểm tra slot trên primary mới:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d postgres -x -c "
+select
+  s.slot_name,
+  s.slot_type,
+  s.active,
+  s.active_pid,
+  r.client_addr,
+  r.application_name,
+  s.restart_lsn,
+  s.wal_status
+from pg_replication_slots s
+left join pg_stat_replication r on r.pid = s.active_pid
+where s.slot_type = 'physical'
+order by s.slot_name;"
+```
+
+Xử lý theo kết quả:
+
+- Không có `<slot_name>`: dùng `pg_basebackup -C -S <slot_name>` để tạo slot mới.
+- Có `<slot_name>` và `active = f`: nếu đây là slot stale của chính standby đang rebuild, drop rồi tạo lại sạch bằng `pg_basebackup -C -S <slot_name>`.
+- Có `<slot_name>` và `active = t`: không drop. Dừng standby đang dùng slot đó trước, hoặc kiểm tra lại vì có thể bạn đang chọn nhầm slot của node khác.
+
+Drop slot stale chỉ sau khi đã chắc chắn standby cũ không còn dùng slot đó:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d postgres -c \
+"select pg_drop_replication_slot('<slot_name>');"
+```
+
+Sau đó giữ lại data directory cũ bằng `mv`, rồi chạy `pg_basebackup` mới:
 
 ```bash
 sudo systemctl stop postgresql@16-main.service
@@ -600,14 +649,7 @@ sudo -u postgres env PGPASSWORD='<repl_pass>' /usr/lib/postgresql/16/bin/pg_base
 sudo systemctl start postgresql@16-main.service
 ```
 
-`<slot_name>` không dùng dấu chấm hoặc gạch ngang. Theo convention của role này, IP `192.168.56.112` dùng slot `192_168_56_112`.
-
-Nếu slot đã tồn tại trên primary mới, chỉ drop slot đó sau khi chắc chắn node cũ không còn dùng:
-
-```bash
-PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d postgres -c \
-"select pg_drop_replication_slot('<slot_name>');"
-```
+Nếu muốn giữ lại slot inactive đang có thay vì drop/recreate, bỏ `-C` và dùng `-S <slot_name>`. Với rebuild full sau sự cố, drop slot stale rồi tạo lại thường dễ kiểm soát hơn.
 
 Kiểm tra standby:
 
