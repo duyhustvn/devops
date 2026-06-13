@@ -444,27 +444,125 @@ FATAL: pgpool is not accepting any new connections
 DETAIL: all backend nodes are down, pgpool requires at least one valid node
 ```
 
-Quy trình:
+Tình huống này có hai khả năng khác nhau:
 
-1. Kiểm tra từng backend qua PgBouncer:
+- PostgreSQL vẫn có một primary thật, nhưng Pgpool đang giữ trạng thái backend `down` cũ.
+- Primary thật đã mất; các node còn sống đều là standby, cần chọn standby có dữ liệu mới nhất để promote.
+
+Không attach node vội khi chưa biết role thật của PostgreSQL. Nếu node primary cũ có khả năng tự quay lại, phải stop/fence node đó trước khi promote node khác để tránh split-brain.
+
+### 1. Kiểm tra backend và role thật
+
+Kiểm tra từng backend qua PgBouncer:
 
 ```bash
 PGPASSWORD='<pgpool_pass>' psql -h <backend-ip> -p 6432 -U pgpool -d postgres -c 'select 1'
 ```
 
-2. Nếu PgBouncer path pass, xem PCP:
+Nếu PgBouncer path pass, xem PCP:
 
 ```bash
 pcp_node_info -h 127.0.0.1 -p 9898 -U pgpool -n <node_id>
 ```
 
-3. Nếu chỉ là Pgpool giữ trạng thái `down` cũ và cluster chỉ có một actual primary, attach primary trước:
+Sau đó bỏ qua Pgpool/PgBouncer và hỏi trực tiếp PostgreSQL từng node:
+
+```bash
+for h in <node1-ip> <node2-ip> <node3-ip>; do
+  echo "== $h =="
+  PGPASSWORD='<postgres_pass>' psql -h "$h" -p 5432 -U postgres -d postgres -Atc \
+  "select
+     inet_server_addr(),
+     pg_is_in_recovery(),
+     case
+       when pg_is_in_recovery() then pg_last_wal_replay_lsn()
+       else pg_current_wal_lsn()
+     end as applied_lsn,
+     (pg_control_checkpoint()).timeline_id,
+     pg_last_wal_receive_lsn(),
+     pg_last_wal_replay_lsn(),
+     pg_last_xact_replay_timestamp()"
+done
+```
+
+Nếu cả PostgreSQL service cũng đang stopped, trước hết chặn app/VIP để không có write mới, rồi start từng node đủ để kiểm tra role/LSN trực tiếp. Standby có thể start khi primary cũ không reachable và vẫn cho query read-only; node nào start lên primary phải được kiểm tra split-brain trước khi cho app ghi.
+
+Thứ tự cột:
+
+```text
+ip|is_standby|applied_lsn|timeline_id|receive_lsn|replay_lsn|last_replay_ts
+```
+
+`pg_is_in_recovery() = f` là primary. `pg_is_in_recovery() = t` là standby. Với standby, dữ liệu đã apply là `pg_last_wal_replay_lsn()`. `pg_last_wal_receive_lsn()` có thể cao hơn nhưng phần đó chưa chắc đã replay xong.
+
+### 2. Chọn node có dữ liệu mới nhất
+
+Nếu có đúng một primary thật (`pg_is_in_recovery() = f`) và không có dấu hiệu split-brain, dùng node đó làm primary chuẩn.
+
+Nếu tất cả node còn sống đều là standby, chọn node để promote theo thứ tự:
+
+1. Chọn `timeline_id` cao nhất.
+2. Nếu cùng `timeline_id`, chọn `applied_lsn` cao nhất.
+3. Nếu có nhiều primary trên timeline khác nhau hoặc nghi có write trên nhiều timeline, dừng lại để audit dữ liệu; không thể quyết định chỉ bằng LSN.
+
+So sánh LSN bằng PostgreSQL thay vì so chuỗi thủ công:
+
+```sql
+select pg_wal_lsn_diff('<candidate_lsn>'::pg_lsn, '<other_lsn>'::pg_lsn);
+```
+
+Kết quả dương nghĩa là `<candidate_lsn>` mới hơn. Có thể nhập nhiều candidate để sort:
+
+```sql
+with candidates(node_name, timeline_id, applied_lsn) as (
+  values
+    ('node1', 5, '16/E84DE6F0'::pg_lsn),
+    ('node3', 5, '16/E99DFBC8'::pg_lsn)
+)
+select node_name, timeline_id, applied_lsn
+from candidates
+order by timeline_id desc, applied_lsn desc;
+```
+
+Ví dụ trên chọn `node3` vì cùng timeline `5` nhưng `16/E99DFBC8` lớn hơn `16/E84DE6F0`.
+
+Nếu `receive_lsn` đang lớn hơn `replay_lsn` trên standby được chọn, chờ replay bắt kịp trước khi promote nếu còn có thể:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <candidate-ip> -p 5432 -U postgres -d postgres -c \
+"select
+   pg_last_wal_receive_lsn() as receive_lsn,
+   pg_last_wal_replay_lsn() as replay_lsn,
+   pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()) as receive_replay_gap_bytes"
+```
+
+### 3. Khôi phục qua Pgpool
+
+Dùng nhánh này khi vẫn vận hành cụm qua Pgpool/PCP.
+
+Nếu chỉ là Pgpool giữ trạng thái `down` cũ và cluster đã có một actual primary, attach primary trước:
 
 ```bash
 pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n <primary_node_id>
 ```
 
-4. Attach standby sau khi xác nhận standby đang follow đúng primary:
+Nếu chưa có primary vì tất cả node còn sống đều là standby, promote node đã chọn bằng PostgreSQL trực tiếp:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <candidate-ip> -p 5432 -U postgres -d postgres -c \
+"select pg_promote(true, 60);"
+
+PGPASSWORD='<postgres_pass>' psql -h <candidate-ip> -p 5432 -U postgres -d postgres -Atc \
+"select pg_is_in_recovery(), pg_current_wal_lsn(), (pg_control_checkpoint()).timeline_id"
+```
+
+Kỳ vọng `pg_is_in_recovery() = f`. Sau đó attach primary mới vào Pgpool:
+
+```bash
+pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n <new_primary_node_id>
+```
+
+Với các node còn lại, nếu đã xác nhận standby đang follow đúng primary mới thì attach:
 
 ```bash
 PGPASSWORD='<postgres_pass>' psql -h <standby-ip> -p 5432 -U postgres -d postgres \
@@ -473,7 +571,87 @@ PGPASSWORD='<postgres_pass>' psql -h <standby-ip> -p 5432 -U postgres -d postgre
 pcp_attach_node -h 127.0.0.1 -p 9898 -U pgpool -n <standby_node_id>
 ```
 
+Nếu standby không follow đúng primary mới, hoặc là old primary quay lại sau failover, rebuild bằng online recovery:
+
+```bash
+pcp_recovery_node -h 127.0.0.1 -p 9898 -U pgpool -n <node_id>
+```
+
 Không attach node có `actual_role = primary` nếu đã có primary khác.
+
+### 4. Khôi phục chỉ bằng PostgreSQL
+
+Dùng nhánh này khi không dùng Pgpool, hoặc muốn biết cách phục hồi bằng PostgreSQL thuần.
+
+Trước tiên đảm bảo app không còn ghi vào node cũ và old primary đã bị stop/fence. Promote node đã chọn:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <candidate-ip> -p 5432 -U postgres -d postgres -c \
+"select pg_promote(true, 60);"
+```
+
+Nếu không connect SQL được nhưng service còn chạy trên candidate, có thể promote local trên chính node đó:
+
+```bash
+sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D /u01/data/postgresql/16/main -w promote
+```
+
+Kiểm tra primary mới:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d postgres -Atc \
+"select pg_is_in_recovery(), pg_current_wal_lsn(), (pg_control_checkpoint()).timeline_id"
+```
+
+Kỳ vọng dòng đầu là `f|...|...`.
+
+Rebuild từng node còn lại thành standby từ primary mới. Cách chắc chắn nhất là giữ lại data directory cũ bằng `mv`, rồi chạy `pg_basebackup` mới:
+
+```bash
+sudo systemctl stop postgresql@16-main.service
+
+sudo -u postgres mv /u01/data/postgresql/16/main /u01/data/postgresql/16/main.bak.$(date +%Y%m%d%H%M%S)
+
+sudo -u postgres env PGPASSWORD='<repl_pass>' /usr/lib/postgresql/16/bin/pg_basebackup \
+  -h <new-primary-ip> \
+  -p 5432 \
+  -U repl \
+  -D /u01/data/postgresql/16/main \
+  -X stream \
+  -R \
+  -C \
+  -S <slot_name>
+
+sudo systemctl start postgresql@16-main.service
+```
+
+`<slot_name>` không dùng dấu chấm hoặc gạch ngang. Theo convention của role này, IP `192.168.56.112` dùng slot `192_168_56_112`.
+
+Nếu slot đã tồn tại trên primary mới, chỉ drop slot đó sau khi chắc chắn node cũ không còn dùng:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d postgres -c \
+"select pg_drop_replication_slot('<slot_name>');"
+```
+
+Kiểm tra standby:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <standby-ip> -p 5432 -U postgres -d postgres -Atc \
+"select pg_is_in_recovery(), pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()"
+
+PGPASSWORD='<postgres_pass>' psql -h <standby-ip> -p 5432 -U postgres -d postgres -x -c \
+"select status, conninfo, latest_end_lsn from pg_stat_wal_receiver"
+```
+
+Kiểm tra trên primary mới:
+
+```bash
+PGPASSWORD='<postgres_pass>' psql -h <new-primary-ip> -p 5432 -U postgres -d postgres -c \
+"select application_name, client_addr, state, sent_lsn, replay_lsn from pg_stat_replication"
+```
+
+Nếu muốn dùng `pg_rewind` thay vì `pg_basebackup`, chỉ làm khi data directory còn nguyên, server target đã stop sạch, và chắc chắn timeline có thể rewind. Với sự cố nặng hoặc không chắc lịch sử WAL, `pg_basebackup` an toàn hơn.
 
 ## Attach node thủ công
 
@@ -565,7 +743,7 @@ sudo systemctl stop pgbouncer
 sudo systemctl stop postgresql@16-main.service
 ```
 
-2. Chọn primary chuẩn dựa trên timeline/LSN và standby đang follow nó.
+2. Chọn primary chuẩn dựa trên timeline/LSN và standby đang follow nó. Dùng cùng quy tắc ở mục "Chọn node có dữ liệu mới nhất".
 
 3. Attach primary chuẩn:
 
