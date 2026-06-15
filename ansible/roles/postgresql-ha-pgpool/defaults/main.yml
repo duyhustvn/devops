@@ -15,7 +15,9 @@ pg_data_dir: /u01/data/postgresql/{{ postgresql_version }}/main
 pg_config_dir: /etc/postgresql/{{ postgresql_version }}/main
 pg_home_dir: /var/lib/postgresql
 pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
-pg_conf_max_connection: 1000
+pg_conf_max_connection: 2000
+# 0 disables PostgreSQL's idle-in-transaction session cleanup.
+pg_conf_idle_in_transaction_session_timeout: 0
 # systemd service limits. systemd services không dùng /etc/security/limits.d.
 postgresql_limit_nofile: 65536
 # Render postgresql.conf candidate without replacing the active config.
@@ -27,7 +29,7 @@ postgresql_conf_preview_path: /tmp/postgresql.conf.preview
 # false: Pgpool bỏ qua pgbouncer và kết nối trực tiếp PostgreSQL qua {{ pg_port }}.
 # Lưu ý: pgbouncer KHÔNG hỗ trợ streaming replication protocol nên pg_basebackup /
 # pg_rewind / primary_conninfo luôn dùng {{ pg_port }} trực tiếp.
-pgbouncer_enabled: true
+pgbouncer_enabled: false
 pgbouncer_port: 6432
 pgbouncer_config_dir: /etc/pgbouncer
 pgbouncer_listen_addr: '*'
