@@ -5,9 +5,11 @@ services:
     restart: always 
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: /secrets/mongodb_admin_password
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongodb_admin_password
     ports:
       - "27017:27017"
+    secrets:
+      - mongodb_admin_password
     volumes:
       - mongodb_data:/data/db
 
