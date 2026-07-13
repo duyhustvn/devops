@@ -18,7 +18,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'export $$(cat /run/secrets/multi_secrets | xargs) && redis-cli -a "$$REDIS_PW" ping | grep -q PONG',
+          'export $$(cat /run/secrets/redis_secret | xargs) && redis-cli -a "$$REDIS_PW" ping | grep -q PONG',
         ]
       interval: 10s
       timeout: 5s
@@ -35,6 +35,9 @@ services:
     entrypoint: >
         sh -c 'export $$(cat /run/secrets/redis_secret | xargs) &&
         /redis_exporter --redis.addr redis:6379 --redis.password "$$REDIS_PW"'
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: always
 
 secrets:
