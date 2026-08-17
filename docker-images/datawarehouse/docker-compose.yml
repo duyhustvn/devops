@@ -15,10 +15,19 @@ volumes:
   redis_data:
     name: dwh_redis_data
 
+secrets:
+  clickhouse_password:
+    file: ./secrets/clickhouse_password.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  superset_secret_key:
+    file: ./secrets/superset_secret_key.txt
+  superset_admin_password:
+    file: ./secrets/superset_admin_password.txt
+
 services:
   # ========================================================
   # CLICKHOUSE - Analytical OLAP Database (DWH Storage)
-  # Tag: 26.4 (ClickHouse quy ước tag theo Năm.Tháng YY.MM)
   # ========================================================
   clickhouse:
     image: clickhouse/clickhouse-server:26.4
@@ -31,8 +40,10 @@ services:
     environment:
       CLICKHOUSE_DB: analytics
       CLICKHOUSE_USER: dwh_user
-      CLICKHOUSE_PASSWORD: dwh_password
+      CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    secrets:
+      - clickhouse_password
     ulimits:
       nofile:
         soft: 262144
@@ -45,7 +56,6 @@ services:
 
   # ========================================================
   # POSTGRESQL - Metadata Database cho Superset
-  # Tag: 16 (Debian standard, không dùng Alpine)
   # ========================================================
   superset-db:
     image: postgres:16
@@ -54,7 +64,9 @@ services:
     environment:
       POSTGRES_DB: superset
       POSTGRES_USER: superset
-      POSTGRES_PASSWORD: superset_password
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U superset -d superset"]
       interval: 5s
@@ -67,7 +79,6 @@ services:
 
   # ========================================================
   # REDIS - Cache & Message Broker cho Superset
-  # Tag: 8 (Debian standard, không dùng Alpine)
   # ========================================================
   superset-redis:
     image: redis:8
@@ -85,7 +96,6 @@ services:
 
   # ========================================================
   # SUPERSET INIT - Tự động migrate DB và tạo tài khoản Admin
-  # Base Image: apache/superset:6.1.0 (Build từ ./superset/Dockerfile)
   # ========================================================
   superset-init:
     build:
@@ -96,17 +106,20 @@ services:
         condition: service_healthy
       superset-redis:
         condition: service_healthy
+    secrets:
+      - superset_secret_key
+      - superset_admin_password
+      - postgres_password
     environment:
-      SUPERSET_SECRET_KEY: "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET_KEY_12345"
       ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: admin_password
       ADMIN_FIRSTNAME: Admin
       ADMIN_LASTNAME: User
       ADMIN_EMAIL: admin@example.com
     entrypoint: >
       /bin/sh -c "
+        ADMIN_PASS=$$(cat /run/secrets/superset_admin_password 2>/dev/null || echo 'admin_password')
         superset db upgrade &&
-        superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRSTNAME} --lastname $${ADMIN_LASTNAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true &&
+        superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRSTNAME} --lastname $${ADMIN_LASTNAME} --email $${ADMIN_EMAIL} --password \"$${ADMIN_PASS}\" || true &&
         superset init
       "
     volumes:
@@ -116,7 +129,6 @@ services:
 
   # ========================================================
   # SUPERSET APP - Giao diện Web Superset
-  # Base Image: apache/superset:6.1.0 (Build từ ./superset/Dockerfile)
   # ========================================================
   superset:
     build:
@@ -130,8 +142,9 @@ services:
         condition: service_started
     ports:
       - "8088:8088"
-    environment:
-      SUPERSET_SECRET_KEY: "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET_KEY_12345"
+    secrets:
+      - superset_secret_key
+      - postgres_password
     volumes:
       - superset_home:/app/superset_home
     networks:

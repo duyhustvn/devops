@@ -1,112 +1,108 @@
-# Data Warehouse Stack: ClickHouse & Apache Superset
+# Data Warehouse Stack: ClickHouse & Apache Superset (Bảo mật bằng Docker Secrets)
 
-Hệ thống Data Warehouse (DWH) & Business Intelligence (BI) Dashboard được triển khai hoàn chỉnh thông qua Docker Compose, tích hợp các phiên bản (đã xác thực trên Docker Hub Registry):
-- **ClickHouse (`clickhouse/clickhouse-server:26.4`)**: Cơ sở dữ liệu phân tích dạng cột (Column-oriented DBMS) hiệu năng cao (bản v26).
-- **Apache Superset (`apache/superset:6.1.0`)**: Giao diện trực quan hóa dữ liệu, xây dựng dashboard và SQL Lab (bản v6).
+Hệ thống Data Warehouse (DWH) & Business Intelligence (BI) Dashboard được triển khai hoàn chỉnh thông qua Docker Compose, tích hợp cơ chế **Docker Secrets** nhằm bảo vệ toàn bộ mật khẩu và secret keys:
+- **ClickHouse (`clickhouse/clickhouse-server:26.4`)**: Cơ sở dữ liệu phân tích dạng cột (Column-oriented DBMS) hiệu năng cao (v26).
+- **Apache Superset (`apache/superset:6.1.0`)**: Giao diện trực quan hóa dữ liệu, xây dựng dashboard và SQL Lab (v6).
 - **PostgreSQL (`postgres:16`)**: Lưu trữ metadata của Superset (Debian standard, không dùng Alpine).
 - **Redis (`redis:8`)**: Caching kết quả truy vấn và Celery message broker (Debian standard, không dùng Alpine).
 
 ---
 
-## 1. Chi tiết chức năng từng Service và dữ liệu lưu trữ
+## 1. Cấu trúc thư mục & Quản lý Secrets
+
+```text
+datawarehouse/
+├── docker-compose.yml
+├── README.md
+├── secrets/                                # Thư mục chứa các file Docker Secret
+│   ├── clickhouse_password.txt             # Mật khẩu người dùng dwh_user trong ClickHouse
+│   ├── postgres_password.txt               # Mật khẩu người dùng superset trong PostgreSQL
+│   ├── superset_secret_key.txt             # Secret key mã hóa phiên Superset
+│   └── superset_admin_password.txt         # Mật khẩu tài khoản Admin khởi tạo của Superset
+└── superset/
+    ├── Dockerfile                          # Build image Superset với uv + Clickhouse/Postgres drivers
+    ├── requirements-local.txt              # Danh sách thư viện Python phụ thuộc
+    └── superset_config.py                  # Cấu hình Superset đọc secrets từ /run/secrets/
+```
+
+---
+
+## 2. Chi tiết chức năng từng Service và dữ liệu lưu trữ
 
 Hệ thống được thiết kế theo mô hình tách biệt rõ ràng giữa **Lớp lưu trữ/tính toán phân tích (Analytics Storage & Compute)** và **Lớp quản lý trực quan hóa (BI & Metadata Layer)**:
 
 ```mermaid
 flowchart TD
-    subgraph ClientLayer [Client & User Layer]
-        User([Người dùng / Data Analyst])
-        ETL([ETL Pipeline / Ingestion Worker])
+    subgraph SecretsManagement [Lớp Quản lý Bí mật - Docker Secrets]
+        SEC_CH["clickhouse_password.txt"]
+        SEC_PG["postgres_password.txt"]
+        SEC_KEY["superset_secret_key.txt"]
+        SEC_ADMIN["superset_admin_password.txt"]
     end
 
     subgraph BILayer [Lớp BI & Visualization - Apache Superset 6.1.0]
-        SS_APP["superset (Web App v6.1.0)\n- Render Charts / Dashboards\n- SQL Lab IDE\n- Quản lý phiên truy cập"]
-        SS_INIT["superset-init (Bootstrap v6.1.0)\n- DB Schema Migration\n- Khởi tạo Admin User & Roles"]
-        PG[("superset-db (PostgreSQL 16)\n- Lưu Metadata: Users, Roles\n- Danh sách Dashboards, Charts\n- Database Connections URI")]
-        RD[("superset-redis (Redis 8)\n- Cache kết quả truy vấn\n- Cache Dashboard metadata\n- Message Queue / Sessions")]
+        SS_APP["superset (Web App v6.1.0)\n- Đọc secret: superset_secret_key, postgres_password\n- Render Charts & Dashboards\n- SQL Lab IDE"]
+        SS_INIT["superset-init (Bootstrap)\n- Đọc secret: superset_admin_password, postgres_password\n- Tự động migrate & tạo Admin"]
+        PG[("superset-db (PostgreSQL 16)\n- Đọc secret: postgres_password\n- Lưu Metadata: Users, Dashboards, Charts")]
+        RD[("superset-redis (Redis 8)\n- Cache kết quả truy vấn & Sessions")]
     end
 
     subgraph DWHLayer [Lớp Data Warehouse - ClickHouse 26.4]
-        CH[("clickhouse (ClickHouse Server 26.4)\n- Động cơ OLAP dạng cột\n- Nén & phân tích dữ liệu lớn\n- Xử lý câu truy vấn SQL siêu tốc")]
+        CH[("clickhouse (ClickHouse Server 26.4)\n- Đọc secret: clickhouse_password\n- Động cơ OLAP dạng cột siêu tốc")]
     end
 
-    User <-->|HTTP :8088| SS_APP
-    ETL -->|TCP :9000 / HTTP :8123| CH
+    SEC_CH -.->|Mount vào /run/secrets/| CH
+    SEC_PG -.->|Mount vào /run/secrets/| PG
+    SEC_PG -.->|Mount vào /run/secrets/| SS_APP
+    SEC_PG -.->|Mount vào /run/secrets/| SS_INIT
+    SEC_KEY -.->|Mount vào /run/secrets/| SS_APP
+    SEC_KEY -.->|Mount vào /run/secrets/| SS_INIT
+    SEC_ADMIN -.->|Mount vào /run/secrets/| SS_INIT
 
-    SS_APP <-->|SQLAlchemy / Metadata| PG
-    SS_APP <-->|Cache / Queue| RD
+    SS_APP <-->|SQLAlchemy Metadata| PG
+    SS_APP <-->|Cache| RD
     SS_APP -->|clickhouse-connect HTTP :8123| CH
-    SS_INIT -->|Migrate Schema| PG
 ```
 
-### 1.1. `clickhouse` (ClickHouse Server v26.4)
-* **Dịch vụ làm gì (Chức năng):**
-  * Là "trái tim" của hệ thống Data Warehouse, chịu trách nhiệm lưu trữ toàn bộ dữ liệu nghiệp vụ dạng cột (Columnar Storage).
-  * Thực hiện tính toán và phân tích tổng hợp (Aggregation: `SUM`, `COUNT`, `AVG`, `GROUP BY`, `JOIN`, Window functions) trên hàng triệu đến hàng tỷ bản ghi với độ trễ chỉ tính bằng mili-giây.
-  * Hỗ trợ tỉ lệ nén dữ liệu cực cao (gấp 3-5 lần cơ sở dữ liệu quan hệ thông thường) bằng các thuật toán LZ4 / ZSTD.
-* **Lưu trữ những gì (Dữ liệu lưu trữ):**
-  * **Dữ liệu phân tích nghiệp vụ:** Các bảng Facts (giao dịch, đơn hàng, sự kiện clickstream, log hệ thống, telemetry...) và Dimensions (khách hàng, sản phẩm, địa điểm...).
-  * **System Tables & Internal Logs:** Các bảng nội bộ của ClickHouse theo dõi lịch sử truy vấn (`system.query_log`), metric hiệu năng, trace log và thống kê part dữ liệu.
-* **Volume lưu trữ:**
-  * `dwh_clickhouse_data` (`/var/lib/clickhouse`): Chứa toàn bộ dữ liệu bảng và partition data.
-  * `dwh_clickhouse_logs` (`/var/log/clickhouse-server`): Chứa file log hoạt động của server.
+### 2.1. `clickhouse` (ClickHouse Server v26.4)
+* **Chức năng:** Lưu trữ dữ liệu nghiệp vụ dạng cột (Columnar Storage) và tính toán phân tích tổng hợp (`SUM`, `COUNT`, `GROUP BY`, `JOIN`) trên dữ liệu lớn với độ trễ mili-giây.
+* **Cơ chế Secret:** Sử dụng biến môi trường `CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password` để đọc mật khẩu trực tiếp từ secret file thay vì để lộ plain-text.
+* **Lưu trữ dữ liệu:**
+  * `dwh_clickhouse_data` (`/var/lib/clickhouse`): Dữ liệu bảng và phân vùng partition.
+  * `dwh_clickhouse_logs` (`/var/log/clickhouse-server`): Log hoạt động của server.
 
 ---
 
-### 1.2. `superset` (Apache Superset v6.1.0 Web UI)
-* **Dịch vụ làm gì (Chức năng):**
-  * Cung cấp giao diện Web người dùng để trực quan hóa dữ liệu (BI Dashboard).
-  * Cung cấp công cụ **SQL Lab** để người dùng viết truy vấn SQL trực tiếp vào ClickHouse và xem trước kết quả.
-  * Xử lý xác thực người dùng, phân quyền truy cập Dashboard/Dataset theo nhóm (Role-Based Access Control - RBAC).
-  * Đóng vai trò làm Client gửi query phân tích đến ClickHouse và render thành các Chart tương tác (Line, Bar, Heatmap, Geospatial...).
-* **Lưu trữ những gì (Dữ liệu lưu trữ):**
-  * Bản thân container Web không lưu dữ liệu vĩnh viễn trong container.
-  * `dwh_superset_home` (`/app/superset_home`): Lưu trữ cấu hình runtime cục bộ, các file tải lên tạm thời (nếu có). Toàn bộ dữ liệu cấu hình chính đều được chuyển về PostgreSQL.
+### 2.2. `superset` (Apache Superset v6.1.0 Web UI)
+* **Chức năng:** Giao diện Web trực quan hóa dữ liệu, Dashboard tương tác, SQL Lab, quản lý người dùng và phân quyền RBAC.
+* **Cơ chế Secret:** Hàm `read_secret()` trong file `superset_config.py` đọc `SECRET_KEY` và mật khẩu kết nối PostgreSQL từ `/run/secrets/`.
+* **Lưu trữ dữ liệu:** `dwh_superset_home` (`/app/superset_home`): Dữ liệu runtime tạm thời.
 
 ---
 
-### 1.3. `superset-init` (Bộ khởi tạo hệ thống Superset)
-* **Dịch vụ làm gì (Chức năng):**
-  * Là container chạy một lần (One-shot task/Bootstrap) khi khởi động cụm dịch vụ.
-  * Tự động chạy lệnh `superset db upgrade` để khởi tạo/cập nhật cấu trúc bảng trong PostgreSQL.
-  * Tự động tạo tài khoản Admin đầu tiên thông qua lệnh `superset fab create-admin`.
-  * Tự động nạp bộ quyền và role mặc định (Admin, Alpha, Gamma, Public) qua lệnh `superset init`.
-* **Trạng thái vòng đời:** Sau khi hoàn tất quá trình khởi tạo, container sẽ tự động dừng với trạng thái `Exited (0)`.
+### 2.3. `superset-init` (Bộ khởi tạo hệ thống Superset)
+* **Chức năng:** Container chạy một lần (`Exited 0`) để tự động:
+  1. Migrate schema cơ sở dữ liệu PostgreSQL (`superset db upgrade`).
+  2. Tạo tài khoản quản trị viên với mật khẩu đọc từ `/run/secrets/superset_admin_password`.
+  3. Khởi tạo roles và phân quyền mặc định (`superset init`).
 
 ---
 
-### 1.4. `superset-db` (PostgreSQL 16 - Lưu trữ Metadata)
-* **Dịch vụ làm gì (Chức năng):**
-  * Đóng vai trò là Cơ sở dữ liệu cấu hình (Configuration & Metadata DB) cho Apache Superset.
-  * Sử dụng image chính thức chuẩn Debian `postgres:16` mang lại độ ổn định cao và tương thích tối đa với thư viện `psycopg2`.
-  * Phục vụ các giao dịch transactional (OLTP) của riêng ứng dụng Superset.
-* **Lưu trữ những gì (Dữ liệu lưu trữ):**
-  * **Tài khoản & Phân quyền:** Danh sách User, Hash mật khẩu, Role, Quyền hạn truy cập từng schema/table.
-  * **Cấu hình kết nối:** Thông tin các Database kết nối vào Superset (chuỗi kết nối SQLAlchemy URI đến ClickHouse, thông tin mã hóa bảo mật).
-  * **Datasets & Metrics:** Định nghĩa các Virtual Dataset, Calculated Columns, Custom SQL Metrics.
-  * **Dashboards & Charts:** Layout sắp xếp biểu đồ, màu sắc, cấu hình bộ lọc (Dashboard Filters, Cross-filtering).
-  * **SQL Lab History:** Lịch sử các câu lệnh SQL mà người dùng từng chạy trong SQL Lab, danh sách Query đã lưu (Saved Queries).
-* **Volume lưu trữ:**
-  * `dwh_superset_pgdata` (`/var/lib/postgresql/data`): Chứa toàn bộ dữ liệu PostgreSQL database.
+### 2.4. `superset-db` (PostgreSQL 16 - Metadata Database)
+* **Chức năng:** Cơ sở dữ liệu Transactional (OLTP) nội bộ của Superset.
+* **Cơ chế Secret:** Sử dụng `POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password` để bảo vệ tài khoản root của DB.
+* **Lưu trữ dữ liệu:**
+  * `dwh_superset_pgdata` (`/var/lib/postgresql/data`): Chứa toàn bộ User, Roles, cấu hình Dashboard, Chart và Dataset.
 
 ---
 
-### 1.5. `superset-redis` (Redis 8 - Bộ nhớ Cache & Message Broker)
-* **Dịch vụ làm gì (Chức năng):**
-  * Cung cấp lớp lưu trữ In-memory tốc độ cực cao làm bộ nhớ đệm (Caching Layer) cho Superset.
-  * Sử dụng image chuẩn `redis:8` (Debian base) với hiệu năng tối ưu và hỗ trợ đầy đủ các module core.
-  * Giảm tải cho ClickHouse khi có nhiều người dùng cùng xem chung một Dashboard hoặc một biểu đồ không thay đổi dữ liệu liên tục.
-  * Đóng vai trò làm hàng đợi thông điệp (Message Broker / Result Backend cho Celery) khi mở rộng xử lý tác vụ bất đồng bộ (Async Query Execution, Email Reports).
-* **Lưu trữ những gì (Dữ liệu lưu trữ):**
-  * **Query Results Cache:** Kết quả của các câu query dữ liệu từ ClickHouse (hạn chế việc phải query lại ClickHouse liên tục trong thời gian cache timeout).
-  * **Dashboard / Form-data Cache:** Trạng thái cấu hình của biểu đồ và dashboard khi người dùng tương tác.
-  * **Session Data:** Phiên đăng nhập của người dùng.
-* **Volume lưu trữ:**
-  * `dwh_redis_data` (`/data`): Lưu trữ file snapshot RDB định kỳ của Redis.
+### 2.5. `superset-redis` (Redis 8 - Caching Layer)
+* **Chức năng:** Lưu trữ In-memory bộ nhớ đệm kết quả truy vấn ClickHouse, trạng thái Dashboard và phiên làm việc.
+* **Lưu trữ dữ liệu:** `dwh_redis_data` (`/data`): Snapshot RDB của Redis.
 
 ---
 
-## 2. Bảng tổng hợp Volumes và Mức độ quan trọng
+## 3. Bảng tổng hợp Volumes và Mức độ quan trọng
 
 | Tên Docker Volume | Mount Path trong Container | Dữ liệu lưu trữ | Tầm quan trọng khi Backup |
 | :--- | :--- | :--- | :--- |
@@ -118,41 +114,18 @@ flowchart TD
 
 ---
 
-## 3. Cấu trúc thư mục
+## 4. Hướng dẫn Build và Khởi chạy
 
-```text
-datawarehouse/
-├── docker-compose.yml
-├── README.md
-└── superset/
-    ├── Dockerfile
-    ├── requirements-local.txt
-    └── superset_config.py
-```
+### Bước 1: (Tùy chọn) Đổi mật khẩu trong thư mục `secrets/`
+Trước khi khởi chạy lần đầu, bạn có thể chỉnh sửa nội dung các file trong thư mục `secrets/` theo ý muốn:
+* `secrets/clickhouse_password.txt`
+* `secrets/postgres_password.txt`
+* `secrets/superset_secret_key.txt`
+* `secrets/superset_admin_password.txt`
 
----
-
-## 4. Thông tin tài khoản mặc định
-
-| Dịch vụ | Docker Image Tag | Host / URL | Cổng | Username | Password | Database |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Apache Superset UI** | `apache/superset:6.1.0` | `http://localhost:8088` | `8088` | `admin` | `admin_password` | - |
-| **ClickHouse HTTP** | `clickhouse/clickhouse-server:26.4` | `http://localhost:8123` | `8123` | `dwh_user` | `dwh_password` | `analytics` |
-| **ClickHouse Native TCP** | `clickhouse/clickhouse-server:26.4` | `localhost:9000` | `9000` | `dwh_user` | `dwh_password` | `analytics` |
-| **PostgreSQL (Metadata)**| `postgres:16` | `dwh-superset-db` | `5432` | `superset` | `superset_password`| `superset` |
-| **Redis (Cache)** | `redis:8` | `dwh-superset-redis` | `6379` | - | - | - |
-
----
-
-## 5. Hướng dẫn Build và Khởi chạy
-
-### Bước 1: Di chuyển vào thư mục
+### Bước 2: Di chuyển vào thư mục và khởi chạy
 ```bash
 cd docker-images/datawarehouse
-```
-
-### Bước 2: Khởi chạy các dịch vụ
-```bash
 docker compose up -d --build
 ```
 
@@ -160,36 +133,32 @@ docker compose up -d --build
 ```bash
 docker compose ps
 ```
-> **Lưu ý:** Container `dwh-superset-init` sau khi chạy xong script khởi tạo database và tài khoản admin sẽ chuyển sang trạng thái `Exited (0)`. Đây là hành vi bình thường.
 
 ---
 
-## 6. Hướng dẫn kết nối Superset vào ClickHouse
+## 5. Hướng dẫn kết nối Superset vào ClickHouse
 
 1. Mở trình duyệt và truy cập: **`http://localhost:8088`**.
-2. Đăng nhập bằng tài khoản:
+2. Đăng nhập bằng tài khoản Admin:
    - **Username**: `admin`
-   - **Password**: `admin_password`
+   - **Password**: *(Mật khẩu đã đặt trong file `secrets/superset_admin_password.txt`, mặc định: `admin_password`)*
 3. Điều hướng tới menu: **Settings** (góc trên bên phải) $\rightarrow$ chọn **Database Connections**.
 4. Bấm nút **+ Database** (màu xanh ở góc trên bên phải).
 5. Tại mục **SUPPORTED DATABASES**, chọn **ClickHouse Connect**.
 6. Điền thông tin kết nối hoặc nhập chuỗi **SQLALCHEMY URI**:
    ```text
-   clickhouse+connect://dwh_user:dwh_password@clickhouse:8123/analytics
+   clickhouse+connect://dwh_user:<clickhouse_password>@clickhouse:8123/analytics
    ```
-   > **Giải thích:** Trong mạng nội bộ Docker (`dwh-network`), Superset gọi Clickhouse qua hostname là `clickhouse` và cổng HTTP là `8123`.
-7. Bấm **Test Connection** để kiểm tra (kết quả hiển thị *Connection looks good!*).
-8. Bấm **Connect** $\rightarrow$ **Finish**.
+   *(Thay `<clickhouse_password>` bằng mật khẩu trong file `secrets/clickhouse_password.txt`, mặc định là `dwh_password`)*.
+7. Bấm **Test Connection** để kiểm tra $\rightarrow$ Bấm **Connect** $\rightarrow$ **Finish**.
 
 ---
 
-## 7. Thử nghiệm tạo dữ liệu mẫu và Dashboard
+## 6. Thử nghiệm tạo dữ liệu mẫu và Dashboard
 
-### Bước 1: Tạo bảng dữ liệu mẫu trong ClickHouse
-Bạn có thể chạy lệnh qua CLI của ClickHouse bằng Docker:
-
+### Bước 1: Tạo bảng dữ liệu mẫu trong ClickHouse qua CLI
 ```bash
-docker exec -it dwh-clickhouse clickhouse-client -u dwh_user --password dwh_password -d analytics
+docker exec -it dwh-clickhouse clickhouse-client -u dwh_user --password "$(cat secrets/clickhouse_password.txt)" -d analytics
 ```
 
 Chạy lệnh SQL sau để tạo bảng đơn hàng và nạp dữ liệu mẫu:
@@ -220,22 +189,12 @@ Gõ `exit` để thoát `clickhouse-client`.
 
 ### Bước 2: Tạo Dataset trên Superset
 1. Trong Superset, chọn menu **Datasets** $\rightarrow$ bấm **+ Dataset**.
-2. Chọn:
-   - **DATABASE**: `ClickHouse` (tên bạn đã đặt khi connect)
-   - **SCHEMA**: `analytics`
-   - **TABLE**: `orders`
+2. Chọn Database: `ClickHouse`, Schema: `analytics`, Table: `orders`.
 3. Bấm **Create Dataset and Create Chart**.
-
-### Bước 3: Tạo Chart & Dashboard
-1. Chọn loại biểu đồ mong muốn (ví dụ: **Bar Chart**, **Pie Chart**, **Time-series Line Chart**).
-2. Kéo thả các trường:
-   - **X-Axis / Dimensions**: `country` hoặc `product_category`
-   - **Metrics**: `SUM(amount)` hoặc `COUNT(order_id)`
-3. Bấm **Create Chart** $\rightarrow$ **Save** $\rightarrow$ Thêm vào **Dashboard mới**.
 
 ---
 
-## 8. Các lệnh quản trị hữu ích
+## 7. Các lệnh quản trị hữu ích
 
 - **Xem log hệ thống:**
   ```bash
