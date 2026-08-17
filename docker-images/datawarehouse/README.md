@@ -8,7 +8,115 @@ Hệ thống Data Warehouse (DWH) & Business Intelligence (BI) Dashboard đượ
 
 ---
 
-## 1. Cấu trúc thư mục
+## 1. Chi tiết chức năng từng Service và dữ liệu lưu trữ
+
+Hệ thống được thiết kế theo mô hình tách biệt rõ ràng giữa **Lớp lưu trữ/tính toán phân tích (Analytics Storage & Compute)** và **Lớp quản lý trực quan hóa (BI & Metadata Layer)**:
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer [Client & User Layer]
+        User([Người dùng / Data Analyst])
+        ETL([ETL Pipeline / Ingestion Worker])
+    end
+
+    subgraph BILayer [Lớp BI & Visualization - Apache Superset]
+        SS_APP["superset (Web App)\n- Render Charts / Dashboards\n- SQL Lab IDE\n- Quản lý phiên truy cập"]
+        SS_INIT["superset-init (Bootstrap)\n- DB Schema Migration\n- Khởi tạo Admin User & Roles"]
+        PG[("superset-db (PostgreSQL)\n- Lưu Metadata: Users, Roles\n- Danh sách Dashboards, Charts\n- Database Connections URI")]
+        RD[("superset-redis (Redis)\n- Cache kết quả truy vấn\n- Cache Dashboard metadata\n- Message Queue / Sessions")]
+    end
+
+    subgraph DWHLayer [Lớp Data Warehouse - ClickHouse]
+        CH[("clickhouse (ClickHouse Server)\n- Động cơ OLAP dạng cột\n- Nén & phân tích dữ liệu lớn\n- Xử lý câu truy vấn SQL siêu tốc")]
+    end
+
+    User <-->|HTTP :8088| SS_APP
+    ETL -->|TCP :9000 / HTTP :8123| CH
+
+    SS_APP <-->|SQLAlchemy / Metadata| PG
+    SS_APP <-->|Cache / Queue| RD
+    SS_APP -->|clickhouse-connect HTTP :8123| CH
+    SS_INIT -->|Migrate Schema| PG
+```
+
+### 1.1. `clickhouse` (Data Warehouse OLAP Engine)
+* **Dịch vụ làm gì (Chức năng):**
+  * Là "trái tim" của hệ thống Data Warehouse, chịu trách nhiệm lưu trữ toàn bộ dữ liệu nghiệp vụ dạng cột (Columnar Storage).
+  * Thực hiện tính toán và phân tích tổng hợp (Aggregation: `SUM`, `COUNT`, `AVG`, `GROUP BY`, `JOIN`, Window functions) trên hàng triệu đến hàng tỷ bản ghi với độ trễ chỉ tính bằng mili-giây.
+  * Hỗ trợ tỉ lệ nén dữ liệu cực cao (gấp 3-5 lần cơ sở dữ liệu quan hệ thông thường) bằng các thuật toán LZ4 / ZSTD.
+* **Lưu trữ những gì (Dữ liệu lưu trữ):**
+  * **Dữ liệu phân tích nghiệp vụ:** Các bảng Facts (giao dịch, đơn hàng, sự kiện clickstream, log hệ thống, telemetry...) và Dimensions (khách hàng, sản phẩm, địa điểm...).
+  * **System Tables & Internal Logs:** Các bảng nội bộ của ClickHouse theo dõi lịch sử truy vấn (`system.query_log`), metric hiệu năng, trace log và thống kê part dữ liệu.
+* **Volume lưu trữ:**
+  * `dwh_clickhouse_data` (`/var/lib/clickhouse`): Chứa toàn bộ dữ liệu bảng và partition data.
+  * `dwh_clickhouse_logs` (`/var/log/clickhouse-server`): Chứa file log hoạt động của server.
+
+---
+
+### 1.2. `superset` (Giao diện Web BI & Analytics UI)
+* **Dịch vụ làm gì (Chức năng):**
+  * Cung cấp giao diện Web người dùng để trực quan hóa dữ liệu (BI Dashboard).
+  * Cung cấp công cụ **SQL Lab** để người dùng viết truy vấn SQL trực tiếp vào ClickHouse và xem trước kết quả.
+  * Xử lý xác thực người dùng, phân quyền truy cập Dashboard/Dataset theo nhóm (Role-Based Access Control - RBAC).
+  * Đóng vai trò làm Client gửi query phân tích đến ClickHouse và render thành các Chart tương tác (Line, Bar, Heatmap, Geospatial...).
+* **Lưu trữ những gì (Dữ liệu lưu trữ):**
+  * Bản thân container Web không lưu dữ liệu vĩnh viễn trong container.
+  * `dwh_superset_home` (`/app/superset_home`): Lưu trữ cấu hình runtime cục bộ, các file tải lên tạm thời (nếu có). Toàn bộ dữ liệu cấu hình chính đều được chuyển về PostgreSQL.
+
+---
+
+### 1.3. `superset-init` (Bộ khởi tạo hệ thống Superset)
+* **Dịch vụ làm gì (Chức năng):**
+  * Là container chạy một lần (One-shot task/Bootstrap) khi khởi động cụm dịch vụ.
+  * Tự động chạy lệnh `superset db upgrade` để khởi tạo/cập nhật cấu trúc bảng trong PostgreSQL.
+  * Tự động tạo tài khoản Admin đầu tiên thông qua lệnh `superset fab create-admin`.
+  * Tự động nạp bộ quyền và role mặc định (Admin, Alpha, Gamma, Public) qua lệnh `superset init`.
+* **Trạng thái vòng đời:** Sau khi hoàn tất quá trình khởi tạo, container sẽ tự động dừng với trạng thái `Exited (0)`.
+
+---
+
+### 1.4. `superset-db` (PostgreSQL - Lưu trữ Metadata)
+* **Dịch vụ làm gì (Chức năng):**
+  * Đóng vai trò là Cơ sở dữ liệu cấu hình (Configuration & Metadata DB) cho Apache Superset.
+  * Phục vụ các giao dịch transactional (OLTP) của riêng ứng dụng Superset.
+* **Lưu trữ những gì (Dữ liệu lưu trữ):**
+  * **Tài khoản & Phân quyền:** Danh sách User, Hash mật khẩu, Role, Quyền hạn truy cập từng schema/table.
+  * **Cấu hình kết nối:** Thông tin các Database kết nối vào Superset (chuỗi kết nối SQLAlchemy URI đến ClickHouse, thông tin mã hóa bảo mật).
+  * **Datasets & Metrics:** Định nghĩa các Virtual Dataset, Calculated Columns, Custom SQL Metrics.
+  * **Dashboards & Charts:** Layout sắp xếp biểu đồ, màu sắc, cấu hình bộ lọc (Dashboard Filters, Cross-filtering).
+  * **SQL Lab History:** Lịch sử các câu lệnh SQL mà người dùng từng chạy trong SQL Lab, danh sách Query đã lưu (Saved Queries).
+* **Volume lưu trữ:**
+  * `dwh_superset_pgdata` (`/var/lib/postgresql/data`): Chứa toàn bộ dữ liệu PostgreSQL database.
+
+---
+
+### 1.5. `superset-redis` (Redis - Bộ nhớ Cache & Message Broker)
+* **Dịch vụ làm gì (Chức năng):**
+  * Cung cấp lớp lưu trữ In-memory tốc độ cực cao làm bộ nhớ đệm (Caching Layer) cho Superset.
+  * Giảm tải cho ClickHouse khi có nhiều người dùng cùng xem chung một Dashboard hoặc một biểu đồ không thay đổi dữ liệu liên tục.
+  * Đóng vai trò làm hàng đợi thông điệp (Message Broker / Result Backend cho Celery) khi mở rộng xử lý tác vụ bất đồng bộ (Async Query Execution, Email Reports).
+* **Lưu trữ những gì (Dữ liệu lưu trữ):**
+  * **Query Results Cache:** Kết quả của các câu query dữ liệu từ ClickHouse (hạn chế việc phải query lại ClickHouse liên tục trong thời gian cache timeout).
+  * **Dashboard / Form-data Cache:** Trạng thái cấu hình của biểu đồ và dashboard khi người dùng tương tác.
+  * **Session Data:** Phiên đăng nhập của người dùng.
+* **Volume lưu trữ:**
+  * `dwh_redis_data` (`/data`): Lưu trữ file snapshot RDB định kỳ của Redis.
+
+---
+
+## 2. Bảng tổng hợp Volumes và Mức độ quan trọng
+
+| Tên Docker Volume | Mount Path trong Container | Dữ liệu lưu trữ | Tầm quan trọng khi Backup |
+| :--- | :--- | :--- | :--- |
+| **`dwh_clickhouse_data`** | `/var/lib/clickhouse` | Toàn bộ dữ liệu Data Warehouse (bảng, partitions) | 🔴 **Tối quan trọng** (Mất là mất dữ liệu DWH) |
+| **`dwh_clickhouse_logs`** | `/var/log/clickhouse-server` | Log hoạt động của ClickHouse | ⚪ Thấp (Có thể tự sinh mới) |
+| **`dwh_superset_pgdata`** | `/var/lib/postgresql/data` | Toàn bộ Dashboard, User, Quyền, Kết nối DB | 🔴 **Tối quan trọng** (Mất là mất công sức vẽ dashboard) |
+| **`dwh_superset_home`** | `/app/superset_home` | File cấu hình local, cache file upload | 🟡 Trung bình |
+| **`dwh_redis_data`** | `/data` | Dữ liệu In-memory cache & sessions | 🟢 Thấp (Tự tái tạo khi có query mới) |
+
+---
+
+## 3. Cấu trúc thư mục
 
 ```text
 datawarehouse/
@@ -22,7 +130,7 @@ datawarehouse/
 
 ---
 
-## 2. Thông tin tài khoản mặc định
+## 4. Thông tin tài khoản mặc định
 
 | Dịch vụ | Host / URL | Cổng | Username | Password | Database |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -34,7 +142,7 @@ datawarehouse/
 
 ---
 
-## 3. Hướng dẫn Build và Khởi chạy
+## 5. Hướng dẫn Build và Khởi chạy
 
 ### Bước 1: Di chuyển vào thư mục
 ```bash
@@ -54,7 +162,7 @@ docker compose ps
 
 ---
 
-## 4. Hướng dẫn kết nối Superset vào ClickHouse
+## 6. Hướng dẫn kết nối Superset vào ClickHouse
 
 1. Mở trình duyệt và truy cập: **`http://localhost:8088`**.
 2. Đăng nhập bằng tài khoản:
@@ -73,7 +181,7 @@ docker compose ps
 
 ---
 
-## 5. Thử nghiệm tạo dữ liệu mẫu và Dashboard
+## 7. Thử nghiệm tạo dữ liệu mẫu và Dashboard
 
 ### Bước 1: Tạo bảng dữ liệu mẫu trong ClickHouse
 Bạn có thể chạy lệnh qua CLI của ClickHouse bằng Docker:
@@ -125,7 +233,7 @@ Gõ `exit` để thoát `clickhouse-client`.
 
 ---
 
-## 6. Các lệnh quản trị hữu ích
+## 8. Các lệnh quản trị hữu ích
 
 - **Xem log hệ thống:**
   ```bash
