@@ -1,0 +1,123 @@
+version: "3.8"
+
+networks:
+  dwh-network:
+    name: dwh-network
+    driver: bridge
+
+volumes:
+  clickhouse_data:
+    name: dwh_clickhouse_data
+  clickhouse_logs:
+    name: dwh_clickhouse_logs
+  superset_pgdata:
+    name: dwh_superset_pgdata
+  superset_home:
+    name: dwh_superset_home
+  redis_data:
+    name: dwh_redis_data
+
+services:
+  # ========================================================
+  # CLICKHOUSE - Analytical OLAP Database (DWH Storage)
+  # ========================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: dwh-clickhouse
+    hostname: clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP Interface (Superset kết nối qua port này)
+      - "9000:9000"   # Native Client Port (CLI / TCP)
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: dwh_user
+      CLICKHOUSE_PASSWORD: dwh_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # POSTGRESQL - Metadata Database cho Superset
+  # ========================================================
+  superset-db:
+    image: postgres:15-alpine
+    container_name: dwh-superset-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset_password
+    volumes:
+      - superset_pgdata:/var/lib/postgresql/data
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # REDIS - Cache & Message Broker cho Superset
+  # ========================================================
+  superset-redis:
+    image: redis:7-alpine
+    container_name: dwh-superset-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # SUPERSET INIT - Tự động migrate DB và tạo tài khoản Admin
+  # ========================================================
+  superset-init:
+    build:
+      context: ./superset
+    container_name: dwh-superset-init
+    depends_on:
+      - superset-db
+      - superset-redis
+    environment:
+      SUPERSET_SECRET_KEY: "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET_KEY_12345"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin_password
+      ADMIN_FIRSTNAME: Admin
+      ADMIN_LASTNAME: User
+      ADMIN_EMAIL: admin@example.com
+    entrypoint: >
+      /bin/sh -c "
+        superset db upgrade &&
+        superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRSTNAME} --lastname $${ADMIN_LASTNAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true &&
+        superset init
+      "
+    volumes:
+      - superset_home:/app/superset_home
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # SUPERSET APP - Giao diện Web Superset
+  # ========================================================
+  superset:
+    build:
+      context: ./superset
+    container_name: dwh-superset-app
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_started
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET_KEY_12345"
+    volumes:
+      - superset_home:/app/superset_home
+    networks:
+      - dwh-network
