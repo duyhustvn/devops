@@ -1,10 +1,10 @@
 # Data Warehouse Stack: ClickHouse & Apache Superset
 
-Hệ thống Data Warehouse (DWH) & Business Intelligence (BI) Dashboard được triển khai hoàn chỉnh thông qua Docker Compose, tích hợp:
-- **ClickHouse (OLAP Engine)**: Cơ sở dữ liệu phân tích dạng cột (Column-oriented DBMS) hiệu năng cao.
-- **Apache Superset (BI Dashboard)**: Giao diện trực quan hóa dữ liệu, xây dựng dashboard và SQL Lab.
-- **PostgreSQL**: Lưu trữ metadata của Superset.
-- **Redis**: Caching kết quả truy vấn và Celery message broker.
+Hệ thống Data Warehouse (DWH) & Business Intelligence (BI) Dashboard được triển khai hoàn chỉnh thông qua Docker Compose, tích hợp các phiên bản (đã xác thực trên Docker Hub Registry):
+- **ClickHouse (`clickhouse/clickhouse-server:26.4`)**: Cơ sở dữ liệu phân tích dạng cột (Column-oriented DBMS) hiệu năng cao (bản v26).
+- **Apache Superset (`apache/superset:6.1.0`)**: Giao diện trực quan hóa dữ liệu, xây dựng dashboard và SQL Lab (bản v6).
+- **PostgreSQL (`postgres:16`)**: Lưu trữ metadata của Superset (Debian standard, không dùng Alpine).
+- **Redis (`redis:8`)**: Caching kết quả truy vấn và Celery message broker (Debian standard, không dùng Alpine).
 
 ---
 
@@ -19,15 +19,15 @@ flowchart TD
         ETL([ETL Pipeline / Ingestion Worker])
     end
 
-    subgraph BILayer [Lớp BI & Visualization - Apache Superset]
-        SS_APP["superset (Web App)\n- Render Charts / Dashboards\n- SQL Lab IDE\n- Quản lý phiên truy cập"]
-        SS_INIT["superset-init (Bootstrap)\n- DB Schema Migration\n- Khởi tạo Admin User & Roles"]
-        PG[("superset-db (PostgreSQL)\n- Lưu Metadata: Users, Roles\n- Danh sách Dashboards, Charts\n- Database Connections URI")]
-        RD[("superset-redis (Redis)\n- Cache kết quả truy vấn\n- Cache Dashboard metadata\n- Message Queue / Sessions")]
+    subgraph BILayer [Lớp BI & Visualization - Apache Superset 6.1.0]
+        SS_APP["superset (Web App v6.1.0)\n- Render Charts / Dashboards\n- SQL Lab IDE\n- Quản lý phiên truy cập"]
+        SS_INIT["superset-init (Bootstrap v6.1.0)\n- DB Schema Migration\n- Khởi tạo Admin User & Roles"]
+        PG[("superset-db (PostgreSQL 16)\n- Lưu Metadata: Users, Roles\n- Danh sách Dashboards, Charts\n- Database Connections URI")]
+        RD[("superset-redis (Redis 8)\n- Cache kết quả truy vấn\n- Cache Dashboard metadata\n- Message Queue / Sessions")]
     end
 
-    subgraph DWHLayer [Lớp Data Warehouse - ClickHouse]
-        CH[("clickhouse (ClickHouse Server)\n- Động cơ OLAP dạng cột\n- Nén & phân tích dữ liệu lớn\n- Xử lý câu truy vấn SQL siêu tốc")]
+    subgraph DWHLayer [Lớp Data Warehouse - ClickHouse 26.4]
+        CH[("clickhouse (ClickHouse Server 26.4)\n- Động cơ OLAP dạng cột\n- Nén & phân tích dữ liệu lớn\n- Xử lý câu truy vấn SQL siêu tốc")]
     end
 
     User <-->|HTTP :8088| SS_APP
@@ -39,7 +39,7 @@ flowchart TD
     SS_INIT -->|Migrate Schema| PG
 ```
 
-### 1.1. `clickhouse` (Data Warehouse OLAP Engine)
+### 1.1. `clickhouse` (ClickHouse Server v26.4)
 * **Dịch vụ làm gì (Chức năng):**
   * Là "trái tim" của hệ thống Data Warehouse, chịu trách nhiệm lưu trữ toàn bộ dữ liệu nghiệp vụ dạng cột (Columnar Storage).
   * Thực hiện tính toán và phân tích tổng hợp (Aggregation: `SUM`, `COUNT`, `AVG`, `GROUP BY`, `JOIN`, Window functions) trên hàng triệu đến hàng tỷ bản ghi với độ trễ chỉ tính bằng mili-giây.
@@ -53,7 +53,7 @@ flowchart TD
 
 ---
 
-### 1.2. `superset` (Giao diện Web BI & Analytics UI)
+### 1.2. `superset` (Apache Superset v6.1.0 Web UI)
 * **Dịch vụ làm gì (Chức năng):**
   * Cung cấp giao diện Web người dùng để trực quan hóa dữ liệu (BI Dashboard).
   * Cung cấp công cụ **SQL Lab** để người dùng viết truy vấn SQL trực tiếp vào ClickHouse và xem trước kết quả.
@@ -75,9 +75,10 @@ flowchart TD
 
 ---
 
-### 1.4. `superset-db` (PostgreSQL - Lưu trữ Metadata)
+### 1.4. `superset-db` (PostgreSQL 16 - Lưu trữ Metadata)
 * **Dịch vụ làm gì (Chức năng):**
   * Đóng vai trò là Cơ sở dữ liệu cấu hình (Configuration & Metadata DB) cho Apache Superset.
+  * Sử dụng image chính thức chuẩn Debian `postgres:16` mang lại độ ổn định cao và tương thích tối đa với thư viện `psycopg2`.
   * Phục vụ các giao dịch transactional (OLTP) của riêng ứng dụng Superset.
 * **Lưu trữ những gì (Dữ liệu lưu trữ):**
   * **Tài khoản & Phân quyền:** Danh sách User, Hash mật khẩu, Role, Quyền hạn truy cập từng schema/table.
@@ -90,9 +91,10 @@ flowchart TD
 
 ---
 
-### 1.5. `superset-redis` (Redis - Bộ nhớ Cache & Message Broker)
+### 1.5. `superset-redis` (Redis 8 - Bộ nhớ Cache & Message Broker)
 * **Dịch vụ làm gì (Chức năng):**
   * Cung cấp lớp lưu trữ In-memory tốc độ cực cao làm bộ nhớ đệm (Caching Layer) cho Superset.
+  * Sử dụng image chuẩn `redis:8` (Debian base) với hiệu năng tối ưu và hỗ trợ đầy đủ các module core.
   * Giảm tải cho ClickHouse khi có nhiều người dùng cùng xem chung một Dashboard hoặc một biểu đồ không thay đổi dữ liệu liên tục.
   * Đóng vai trò làm hàng đợi thông điệp (Message Broker / Result Backend cho Celery) khi mở rộng xử lý tác vụ bất đồng bộ (Async Query Execution, Email Reports).
 * **Lưu trữ những gì (Dữ liệu lưu trữ):**
@@ -132,13 +134,13 @@ datawarehouse/
 
 ## 4. Thông tin tài khoản mặc định
 
-| Dịch vụ | Host / URL | Cổng | Username | Password | Database |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Apache Superset UI** | `http://localhost:8088` | `8088` | `admin` | `admin_password` | - |
-| **ClickHouse HTTP** | `http://localhost:8123` | `8123` | `dwh_user` | `dwh_password` | `analytics` |
-| **ClickHouse Native TCP** | `localhost:9000` | `9000` | `dwh_user` | `dwh_password` | `analytics` |
-| **PostgreSQL (Metadata)**| `dwh-superset-db` | `5432` | `superset` | `superset_password`| `superset` |
-| **Redis (Cache)** | `dwh-superset-redis` | `6379` | - | - | - |
+| Dịch vụ | Docker Image Tag | Host / URL | Cổng | Username | Password | Database |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Apache Superset UI** | `apache/superset:6.1.0` | `http://localhost:8088` | `8088` | `admin` | `admin_password` | - |
+| **ClickHouse HTTP** | `clickhouse/clickhouse-server:26.4` | `http://localhost:8123` | `8123` | `dwh_user` | `dwh_password` | `analytics` |
+| **ClickHouse Native TCP** | `clickhouse/clickhouse-server:26.4` | `localhost:9000` | `9000` | `dwh_user` | `dwh_password` | `analytics` |
+| **PostgreSQL (Metadata)**| `postgres:16` | `dwh-superset-db` | `5432` | `superset` | `superset_password`| `superset` |
+| **Redis (Cache)** | `redis:8` | `dwh-superset-redis` | `6379` | - | - | - |
 
 ---
 

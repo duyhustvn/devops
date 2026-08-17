@@ -18,15 +18,16 @@ volumes:
 services:
   # ========================================================
   # CLICKHOUSE - Analytical OLAP Database (DWH Storage)
+  # Tag: 26.4 (ClickHouse quy ước tag theo Năm.Tháng YY.MM)
   # ========================================================
   clickhouse:
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server:26.4
     container_name: dwh-clickhouse
     hostname: clickhouse
     restart: unless-stopped
     ports:
-      - "8123:8123" # HTTP Interface (Superset kết nối qua port này)
-      - "9000:9000" # Native Client Port (CLI / TCP)
+      - "8123:8123"   # HTTP Interface (Superset kết nối qua port này)
+      - "9000:9000"   # Native Client Port (CLI / TCP)
     environment:
       CLICKHOUSE_DB: analytics
       CLICKHOUSE_USER: dwh_user
@@ -44,15 +45,21 @@ services:
 
   # ========================================================
   # POSTGRESQL - Metadata Database cho Superset
+  # Tag: 16 (Debian standard, không dùng Alpine)
   # ========================================================
   superset-db:
-    image: postgres:15-alpine
+    image: postgres:16
     container_name: dwh-superset-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: superset
       POSTGRES_USER: superset
       POSTGRES_PASSWORD: superset_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset -d superset"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - superset_pgdata:/var/lib/postgresql/data
     networks:
@@ -60,11 +67,17 @@ services:
 
   # ========================================================
   # REDIS - Cache & Message Broker cho Superset
+  # Tag: 8 (Debian standard, không dùng Alpine)
   # ========================================================
   superset-redis:
-    image: redis:7-alpine
+    image: redis:8
     container_name: dwh-superset-redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - redis_data:/data
     networks:
@@ -72,14 +85,17 @@ services:
 
   # ========================================================
   # SUPERSET INIT - Tự động migrate DB và tạo tài khoản Admin
+  # Base Image: apache/superset:6.1.0 (Build từ ./superset/Dockerfile)
   # ========================================================
   superset-init:
     build:
       context: ./superset
     container_name: dwh-superset-init
     depends_on:
-      - superset-db
-      - superset-redis
+      superset-db:
+        condition: service_healthy
+      superset-redis:
+        condition: service_healthy
     environment:
       SUPERSET_SECRET_KEY: "CHANGE_ME_TO_A_COMPLEX_RANDOM_SECRET_KEY_12345"
       ADMIN_USERNAME: admin
@@ -100,6 +116,7 @@ services:
 
   # ========================================================
   # SUPERSET APP - Giao diện Web Superset
+  # Base Image: apache/superset:6.1.0 (Build từ ./superset/Dockerfile)
   # ========================================================
   superset:
     build:
