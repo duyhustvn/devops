@@ -20,14 +20,9 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:26.4
     container_name: dwh-clickhouse-node2
-    hostname: node-02
+    hostname: node-db-02
     restart: unless-stopped
-    ports:
-      - "8123:8123"   # HTTP Client
-      - "9000:9000"   # Native TCP Client
-      - "9009:9009"   # Interserver Replication
-      - "9181:9181"   # Keeper TCP
-      - "9234:9234"   # Keeper Raft
+    network_mode: host
     environment:
       CLICKHOUSE_DB: analytics
       CLICKHOUSE_USER: dwh_user
@@ -43,5 +38,3 @@ services:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
       - ./config.d:/etc/clickhouse-server/config.d:ro
-    networks:
-      - dwh-network

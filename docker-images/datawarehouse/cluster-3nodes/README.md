@@ -18,11 +18,15 @@ docker-images/datawarehouse/cluster-3nodes/
 │   ├── config.d/
 │   │   ├── keeper.xml                    # server_id = 1
 │   │   └── cluster.xml                   # shard = 1, replica = node-01
-│   └── secrets/
-│       ├── clickhouse_password.txt
-│       ├── postgres_password.txt
-│       ├── superset_secret_key.txt
-│       └── superset_admin_password.txt
+│   ├── secrets/
+│   │   ├── clickhouse_password.txt
+│   │   ├── postgres_password.txt
+│   │   ├── superset_secret_key.txt
+│   │   └── superset_admin_password.txt
+│   └── superset/                         # Độc lập - chứa Dockerfile, config, dependencies
+│       ├── Dockerfile
+│       ├── requirements-local.txt
+│       └── superset_config.py
 ├── node2/                                # Triển khai trên Node 2 (192.168.56.112)
 │   ├── docker-compose.yml                # ClickHouse + Keeper
 │   ├── config.d/
@@ -126,6 +130,27 @@ sudo firewall-cmd --permanent --add-port=8088/tcp
 # 3. Reload Firewalld
 sudo firewall-cmd --reload
 ```
+
+---
+
+### 2.3. Tại sao ClickHouse trong Cụm cần chạy `network_mode: host`?
+
+Trong môi trường phân tán nhiều node (Multi-node Cluster), việc cấu hình `network_mode: host` cho container ClickHouse là **chuẩn thực hành tốt nhất (Best Practice)** vì các lý do cốt lõi sau:
+
+1. **Khắc phục lỗi DDLWorker & Lệnh `ON CLUSTER` (Tối quan trọng):**
+   * Khi bạn chạy lệnh phân tán `CREATE TABLE ... ON CLUSTER`, ClickHouse tạo một task phân tán trong Keeper chứa danh sách IP thực tế (`192.168.56.111:9000`, `192.168.56.112:9000`, `192.168.56.113:9000`).
+   * Tiến trình `DDLWorker` trên mỗi node quét qua danh sách này và đối chiếu với card mạng cục bộ (`getifaddrs()`).
+   * Nếu dùng **Docker Bridge**, container chỉ nhìn thấy IP ảo nội bộ của Docker (`172.18.0.x`), không khớp với IP máy ảo thật $\rightarrow$ ClickHouse bỏ qua task vì nghĩ task dành cho máy khác $\rightarrow$ Gây lỗi treo `TIMEOUT_EXCEEDED (Code 159)`.
+   * Khi dùng **Host Network**, ClickHouse gắn trực tiếp vào card mạng thật (`enp0s8`), nhận diện chính xác `is_local = 1` và thực thi DDL phân tán tức thì.
+
+2. **Triệt tiêu độ trễ mạng cho Đồng thuận Raft (ClickHouse Keeper) & Sao chép dữ liệu:**
+   * Cụm ClickHouse Keeper liên tục trao đổi heartbeat và đồng thuận Raft trên port `9234` theo chu kỳ mili-giây.
+   * Quá trình sao chép phân vùng dữ liệu lớn (Data Parts Sync trên port `9009`) và truy vấn phân tán (port `9000`) đòi hỏi thông lượng mạng tối đa.
+   * `network_mode: host` loại bỏ hoàn toàn tầng trung gian **Docker Bridge NAT và iptables packet forwarding**, giảm thiểu CPU overhead và triệt tiêu độ trễ mạng.
+
+3. **Đơn giản hóa quản trị Port & Network Routing:**
+   * Tránh tình trạng phải map thủ công 5 port phức tạp (`8123, 9000, 9009, 9181, 9234`) trên từng container.
+   * Các node giao tiếp trực tiếp với nhau như thể ClickHouse được cài đặt trực tiếp dạng native binary trên OS máy ảo.
 
 ---
 
