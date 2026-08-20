@@ -1,0 +1,155 @@
+networks:
+  dwh-network:
+    name: dwh-network
+    driver: bridge
+
+volumes:
+  clickhouse_data:
+    name: dwh_cluster_clickhouse_data_node1
+  clickhouse_logs:
+    name: dwh_cluster_clickhouse_logs_node1
+  superset_pgdata:
+    name: dwh_cluster_superset_pgdata
+  superset_home:
+    name: dwh_cluster_superset_home
+  redis_data:
+    name: dwh_cluster_redis_data
+
+secrets:
+  clickhouse_password:
+    file: ./secrets/clickhouse_password.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  superset_secret_key:
+    file: ./secrets/superset_secret_key.txt
+  superset_admin_password:
+    file: ./secrets/superset_admin_password.txt
+
+services:
+  # ========================================================
+  # CLICKHOUSE NODE 1 - Server + Keeper Raft 01
+  # ========================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.4
+    container_name: dwh-clickhouse-node1
+    hostname: node-01
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP Client
+      - "9000:9000"   # Native TCP Client
+      - "9009:9009"   # Interserver Replication
+      - "9181:9181"   # Keeper TCP
+      - "9234:9234"   # Keeper Raft
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: dwh_user
+      CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    secrets:
+      - clickhouse_password
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./config.d:/etc/clickhouse-server/config.d:ro
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # POSTGRESQL - Metadata Database cho Superset
+  # ========================================================
+  superset-db:
+    image: postgres:16
+    container_name: dwh-superset-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset -d superset"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - superset_pgdata:/var/lib/postgresql/data
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # REDIS - Cache & Message Broker cho Superset
+  # ========================================================
+  superset-redis:
+    image: redis:8
+    container_name: dwh-superset-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # SUPERSET INIT - Tự động migrate DB và tạo tài khoản Admin
+  # ========================================================
+  superset-init:
+    build:
+      context: ../../superset
+    container_name: dwh-superset-init
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      superset-redis:
+        condition: service_healthy
+    secrets:
+      - superset_secret_key
+      - superset_admin_password
+      - postgres_password
+    environment:
+      ADMIN_USERNAME: admin
+      ADMIN_FIRSTNAME: Admin
+      ADMIN_LASTNAME: User
+      ADMIN_EMAIL: admin@example.com
+    entrypoint: >
+      /bin/sh -c "
+        ADMIN_PASS=$$(cat /run/secrets/superset_admin_password 2>/dev/null || echo 'admin_password')
+        superset db upgrade &&
+        superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRSTNAME} --lastname $${ADMIN_LASTNAME} --email $${ADMIN_EMAIL} --password \"$${ADMIN_PASS}\" || true &&
+        superset init
+      "
+    volumes:
+      - superset_home:/app/superset_home
+    networks:
+      - dwh-network
+
+  # ========================================================
+  # SUPERSET APP - Giao diện Web Superset
+  # ========================================================
+  superset:
+    build:
+      context: ../../superset
+    container_name: dwh-superset-app
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_started
+    ports:
+      - "8088:8088"
+    secrets:
+      - superset_secret_key
+      - postgres_password
+    volumes:
+      - superset_home:/app/superset_home
+    networks:
+      - dwh-network

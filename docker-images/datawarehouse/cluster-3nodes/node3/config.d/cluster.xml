@@ -1,0 +1,41 @@
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+
+    <remote_servers>
+        <dwh_cluster_3node>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>192.168.56.111</host>
+                    <port>9000</port>
+                    <user>dwh_user</user>
+                    <password>dwh_password</password>
+                </replica>
+            </shard>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>192.168.56.112</host>
+                    <port>9000</port>
+                    <user>dwh_user</user>
+                    <password>dwh_password</password>
+                </replica>
+            </shard>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>192.168.56.113</host>
+                    <port>9000</port>
+                    <user>dwh_user</user>
+                    <password>dwh_password</password>
+                </replica>
+            </shard>
+        </dwh_cluster_3node>
+    </remote_servers>
+
+    <macros>
+        <cluster>dwh_cluster_3node</cluster>
+        <shard>3</shard>
+        <replica>node-03</replica>
+    </macros>
+</clickhouse>
