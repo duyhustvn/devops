@@ -41,13 +41,91 @@ docker-images/datawarehouse/cluster-3nodes/
 
 ---
 
-## 2. Bảng phân bổ IP và Port
+## 2. Yêu cầu Mạng & Chi tiết các Port cần mở (Network Requirements)
 
-| Node | IP | Services | Port mở |
-| :--- | :--- | :--- | :--- |
-| **Node 1** | `192.168.56.111` | ClickHouse, Keeper 01, Superset, Postgres, Redis | `8123` (HTTP), `9000` (TCP), `9009` (Interserver), `9181` (Keeper), `9234` (Raft), `8088` (Superset) |
-| **Node 2** | `192.168.56.112` | ClickHouse, Keeper 02 | `8123` (HTTP), `9000` (TCP), `9009` (Interserver), `9181` (Keeper), `9234` (Raft) |
-| **Node 3** | `192.168.56.113` | ClickHouse, Keeper 03 | `8123` (HTTP), `9000` (TCP), `9009` (Interserver), `9181` (Keeper), `9234` (Raft) |
+Để cụm 3 Node hoạt động ổn định và đồng bộ dữ liệu song song, các port sau cần được mở trên Firewall (UFW / Firewalld / Security Group) giữa các node:
+
+### 2.1. Bảng ma trận các Port cần mở
+
+| Port | Giao thức | Dịch vụ | Chiều kết nối (Direction) | Mục đích sử dụng |
+| :--- | :---: | :--- | :--- | :--- |
+| **`9234`** | TCP | **Keeper Raft** | **Node $\leftrightarrow$ Node** (3 node 2 chiều) | Trao đổi Heartbeat, bầu Leader và đồng thuận Raft giữa 3 Keeper |
+| **`9181`** | TCP | **Keeper Client** | **Node $\leftrightarrow$ Node** | ClickHouse Server kết nối vào Keeper để lấy lock DDL, đồng bộ metadata |
+| **`9009`** | TCP | **Interserver Sync** | **Node $\leftrightarrow$ Node** | Sao chép và đồng bộ các file dữ liệu bảng (`ReplicatedMergeTree`) giữa các node |
+| **`9000`** | TCP | **ClickHouse Native TCP** | **Node $\leftrightarrow$ Node** & Client $\rightarrow$ Node | Chạy truy vấn phân tán (`Distributed Query`) giữa các node, `clickhouse-client` CLI |
+| **`8123`** | TCP | **ClickHouse HTTP** | Client / Superset $\rightarrow$ Node | Superset, Grafana, Web Client kết nối truy vấn qua HTTP API |
+| **`8088`** | TCP | **Superset Web UI** | Browser $\rightarrow$ Node 1 | Người dùng truy cập Dashboard và SQL Lab |
+
+```mermaid
+flowchart LR
+    subgraph External [Client & BI]
+        Browser["Trình duyệt User"]
+    end
+
+    subgraph N1 ["Node 1 (192.168.56.111)"]
+        CH1["ClickHouse :8123, :9000"]
+        KP1["Keeper :9181, :9234"]
+        SS["Superset :8088"]
+    end
+
+    subgraph N2 ["Node 2 (192.168.56.112)"]
+        CH2["ClickHouse :8123, :9000"]
+        KP2["Keeper :9181, :9234"]
+    end
+
+    subgraph N3 ["Node 3 (192.168.56.113)"]
+        CH3["ClickHouse :8123, :9000"]
+        KP3["Keeper :9181, :9234"]
+    end
+
+    Browser -->|TCP 8088| SS
+    SS -->|TCP 8123| CH1
+
+    %% Inter-node
+    CH1 <-->|TCP 9000 (Distributed Query)\nTCP 9009 (Data Sync)| CH2
+    CH2 <-->|TCP 9000 (Distributed Query)\nTCP 9009 (Data Sync)| CH3
+    CH3 <-->|TCP 9000 (Distributed Query)\nTCP 9009 (Data Sync)| CH1
+
+    KP1 <-->|TCP 9234 (Raft Quorum)\nTCP 9181 (Coordination)| KP2
+    KP2 <-->|TCP 9234 (Raft Quorum)\nTCP 9181 (Coordination)| KP3
+    KP3 <-->|TCP 9234 (Raft Quorum)\nTCP 9181 (Coordination)| KP1
+```
+
+---
+
+### 2.2. Lệnh cấu hình Firewall mẫu
+
+#### Cho Ubuntu / Debian (UFW):
+```bash
+# 1. Cho phép kết nối nội bộ giữa 3 node (Khuyên dùng: mở toàn bộ dải IP private mạng nội bộ)
+sudo ufw allow from 192.168.56.0/24 to any port 9234 proto tcp comment 'ClickHouse Keeper Raft'
+sudo ufw allow from 192.168.56.0/24 to any port 9181 proto tcp comment 'ClickHouse Keeper Client'
+sudo ufw allow from 192.168.56.0/24 to any port 9009 proto tcp comment 'ClickHouse Data Replication'
+sudo ufw allow from 192.168.56.0/24 to any port 9000 proto tcp comment 'ClickHouse Native TCP'
+sudo ufw allow from 192.168.56.0/24 to any port 8123 proto tcp comment 'ClickHouse HTTP'
+
+# 2. Mở cổng Superset cho người dùng bên ngoài (chỉ cần chạy trên Node 1)
+sudo ufw allow 8088/tcp comment 'Apache Superset Web UI'
+
+# 3. Reload UFW
+sudo ufw reload
+```
+
+#### Cho RHEL / Rocky Linux / CentOS (Firewalld):
+```bash
+# 1. Mở các port giao tiếp cụm nội bộ
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9234" protocol="tcp" accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9181" protocol="tcp" accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9009" protocol="tcp" accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9000" protocol="tcp" accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="8123" protocol="tcp" accept'
+
+# 2. Mở port Superset trên Node 1
+sudo firewall-cmd --permanent --add-port=8088/tcp
+
+# 3. Reload Firewalld
+sudo firewall-cmd --reload
+```
 
 ---
 
