@@ -103,7 +103,7 @@ services:
   # ========================================================
   superset-init:
     build:
-      context: ../../superset
+      context: ../../standalone/superset
     container_name: dwh-superset-init
     depends_on:
       superset-db:
@@ -136,7 +136,7 @@ services:
   # ========================================================
   superset:
     build:
-      context: ../../superset
+      context: ../../standalone/superset
     container_name: dwh-superset-app
     restart: unless-stopped
     depends_on:

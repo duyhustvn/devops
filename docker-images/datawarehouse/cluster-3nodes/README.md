@@ -58,7 +58,7 @@ docker-images/datawarehouse/cluster-3nodes/
 
 ```mermaid
 flowchart LR
-    subgraph External [Client & BI]
+    subgraph External ["Client & BI"]
         Browser["Trình duyệt User"]
     end
 
@@ -78,17 +78,17 @@ flowchart LR
         KP3["Keeper :9181, :9234"]
     end
 
-    Browser -->|TCP 8088| SS
-    SS -->|TCP 8123| CH1
+    Browser -->|"TCP 8088"| SS
+    SS -->|"TCP 8123"| CH1
 
     %% Inter-node
-    CH1 <-->|TCP 9000 (Distributed Query)\nTCP 9009 (Data Sync)| CH2
-    CH2 <-->|TCP 9000 (Distributed Query)\nTCP 9009 (Data Sync)| CH3
-    CH3 <-->|TCP 9000 (Distributed Query)\nTCP 9009 (Data Sync)| CH1
+    CH1 <-->|"TCP 9000: Distributed Query<br/>TCP 9009: Data Sync"| CH2
+    CH2 <-->|"TCP 9000: Distributed Query<br/>TCP 9009: Data Sync"| CH3
+    CH3 <-->|"TCP 9000: Distributed Query<br/>TCP 9009: Data Sync"| CH1
 
-    KP1 <-->|TCP 9234 (Raft Quorum)\nTCP 9181 (Coordination)| KP2
-    KP2 <-->|TCP 9234 (Raft Quorum)\nTCP 9181 (Coordination)| KP3
-    KP3 <-->|TCP 9234 (Raft Quorum)\nTCP 9181 (Coordination)| KP1
+    KP1 <-->|"TCP 9234: Raft Quorum<br/>TCP 9181: Coordination"| KP2
+    KP2 <-->|"TCP 9234: Raft Quorum<br/>TCP 9181: Coordination"| KP3
+    KP3 <-->|"TCP 9234: Raft Quorum<br/>TCP 9181: Coordination"| KP1
 ```
 
 ---
