@@ -6,6 +6,9 @@ Hệ thống Data Warehouse phân tán 3 Node kết hợp Business Intelligence 
 - **Apache Superset (`apache/superset:6.1.0`)**: Dashboard trực quan hóa và SQL Lab trên Node 1.
 - **PostgreSQL 16 & Redis 8**: Metadata và Cache cho Superset trên Node 1.
 
+> [!NOTE]
+> Xem chi tiết tài liệu chuyên sâu: [So Sánh Kiến Trúc ClickHouse vs PostgreSQL & Chiến Lược Mô Hình Hóa Dữ Liệu](../CLICKHOUSE_VS_POSTGRESQL_AND_DATA_MODELING.md) để nắm rõ cơ chế Sharding, Replication, và cách tối ưu hóa bảng trong ClickHouse.
+
 ---
 
 ## 1. Cấu trúc thư mục

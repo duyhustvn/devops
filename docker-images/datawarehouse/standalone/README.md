@@ -6,6 +6,9 @@ Hệ thống Data Warehouse (DWH) & Business Intelligence (BI) Dashboard đượ
 - **PostgreSQL (`postgres:16`)**: Lưu trữ metadata của Superset (Debian standard, không dùng Alpine).
 - **Redis (`redis:8`)**: Caching kết quả truy vấn và Celery message broker (Debian standard, không dùng Alpine).
 
+> [!NOTE]
+> Xem chi tiết tài liệu chuyên sâu: [So Sánh Kiến Trúc ClickHouse vs PostgreSQL & Chiến Lược Mô Hình Hóa Dữ Liệu](../CLICKHOUSE_VS_POSTGRESQL_AND_DATA_MODELING.md) để hiểu rõ sự khác biệt giữa OLAP và OLTP cũng như cách thiết kế bảng phân tích.
+
 ---
 
 ## 1. Cấu trúc thư mục & Quản lý Secrets
