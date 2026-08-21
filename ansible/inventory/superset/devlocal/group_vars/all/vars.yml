@@ -1,0 +1,16 @@
+# Superset deployment variables
+superset_deploy_dir: '/u01/superset'
+superset_image_base: 'apache/superset:6.1.0'
+superset_postgres_image: 'postgres:16'
+superset_redis_image: 'redis:8'
+
+superset_port: 8088
+superset_postgres_user: 'superset'
+superset_postgres_db: 'superset'
+
+superset_admin_username: 'admin'
+superset_admin_firstname: 'Admin'
+superset_admin_lastname: 'User'
+superset_admin_email: 'admin@example.com'
+
+superset_row_limit: 50000

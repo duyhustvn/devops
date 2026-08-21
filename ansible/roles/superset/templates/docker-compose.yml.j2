@@ -1,0 +1,106 @@
+services:
+  # ========================================================
+  # POSTGRESQL - Metadata Database cho Superset
+  # ========================================================
+  superset-db:
+    image: {{ superset_postgres_image }}
+    container_name: dwh-superset-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: {{ superset_postgres_db }}
+      POSTGRES_USER: {{ superset_postgres_user }}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ superset_postgres_user }} -d {{ superset_postgres_db }}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - {{ superset_deploy_dir }}/pgdata:/var/lib/postgresql/data
+    networks:
+      - superset-network
+
+  # ========================================================
+  # REDIS - Cache & Message Broker cho Superset
+  # ========================================================
+  superset-redis:
+    image: {{ superset_redis_image }}
+    container_name: dwh-superset-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - {{ superset_deploy_dir }}/redis_data:/data
+    networks:
+      - superset-network
+
+  # ========================================================
+  # SUPERSET INIT - Tự động migrate DB và tạo tài khoản Admin
+  # ========================================================
+  superset-init:
+    build:
+      context: ./superset
+    container_name: dwh-superset-init
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      superset-redis:
+        condition: service_healthy
+    secrets:
+      - superset_secret_key
+      - superset_admin_password
+      - postgres_password
+    environment:
+      ADMIN_USERNAME: {{ superset_admin_username }}
+      ADMIN_FIRSTNAME: {{ superset_admin_firstname }}
+      ADMIN_LASTNAME: {{ superset_admin_lastname }}
+      ADMIN_EMAIL: {{ superset_admin_email }}
+    entrypoint: >
+      /bin/sh -c "
+        ADMIN_PASS=$$(cat /run/secrets/superset_admin_password 2>/dev/null || echo 'admin_password')
+        superset db upgrade &&
+        superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRSTNAME} --lastname $${ADMIN_LASTNAME} --email $${ADMIN_EMAIL} --password \"$${ADMIN_PASS}\" || true &&
+        superset init
+      "
+    volumes:
+      - {{ superset_deploy_dir }}/superset_home:/app/superset_home
+    networks:
+      - superset-network
+
+  # ========================================================
+  # SUPERSET APP - Giao diện Web Superset
+  # ========================================================
+  superset:
+    build:
+      context: ./superset
+    container_name: dwh-superset-app
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    ports:
+      - "{{ superset_port }}:8088"
+    secrets:
+      - superset_secret_key
+      - postgres_password
+    volumes:
+      - {{ superset_deploy_dir }}/superset_home:/app/superset_home
+    networks:
+      - superset-network
+
+secrets:
+  postgres_password:
+    file: {{ superset_deploy_dir }}/secrets/postgres_password.txt
+  superset_secret_key:
+    file: {{ superset_deploy_dir }}/secrets/superset_secret_key.txt
+  superset_admin_password:
+    file: {{ superset_deploy_dir }}/secrets/superset_admin_password.txt
+
+networks:
+  superset-network:
+    driver: bridge

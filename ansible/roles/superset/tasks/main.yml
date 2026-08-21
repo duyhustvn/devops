@@ -1,0 +1,98 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for superset
+
+- name: Create deployment directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+    recurse: yes
+  loop:
+    - "{{ superset_deploy_dir }}"
+    - "{{ superset_deploy_dir }}/superset"
+    - "{{ superset_deploy_dir }}/secrets"
+    - "{{ superset_deploy_dir }}/pgdata"
+    - "{{ superset_deploy_dir }}/redis_data"
+    - "{{ superset_deploy_dir }}/superset_home"
+  tags: [config]
+
+- name: Set permissions for superset_home directory
+  file:
+    path: "{{ superset_deploy_dir }}/superset_home"
+    state: directory
+    owner: 1000
+    group: 1000
+    mode: "0775"
+  tags: [config]
+
+- name: Copy requirements-local.txt
+  copy:
+    src: requirements-local.txt
+    dest: "{{ superset_deploy_dir }}/superset/requirements-local.txt"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate Dockerfile
+  template:
+    src: Dockerfile.j2
+    dest: "{{ superset_deploy_dir }}/superset/Dockerfile"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate superset_config.py
+  template:
+    src: superset_config.py.j2
+    dest: "{{ superset_deploy_dir }}/superset/superset_config.py"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate secrets
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ superset_deploy_dir }}/secrets/{{ item.dest }}"
+    mode: "0600"
+    owner: root
+    group: root
+  loop:
+    - { src: "postgres_password.txt.j2", dest: "postgres_password.txt" }
+    - { src: "superset_secret_key.txt.j2", dest: "superset_secret_key.txt" }
+    - { src: "superset_admin_password.txt.j2", dest: "superset_admin_password.txt" }
+  tags: [config]
+
+- name: Generate docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ superset_deploy_dir }}/docker-compose.yml"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Build custom Superset image
+  shell: |
+    docker compose build
+  args:
+    chdir: "{{ superset_deploy_dir }}"
+  tags: [deploy]
+
+- name: Deploy Superset Stack
+  shell: |
+    docker compose up -d --force-recreate
+  args:
+    chdir: "{{ superset_deploy_dir }}"
+  register: superset_deploy_result
+  tags: [deploy]
+
+- name: Debug deploy result
+  debug:
+    var: superset_deploy_result
+  tags: [deploy]

@@ -1,0 +1,18 @@
+---
+- name: Install Apache Superset
+  hosts: superset
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - include_vars: ../group_vars/all/vars.yml
+      tags: [always]
+
+  tasks:
+    - name: Debug
+      debug:
+        msg: "playbook_dir: {{ playbook_dir }}, inventory_hostname: {{ inventory_hostname }}"
+      tags: [debug]
+
+  roles:
+    - docker
+    - superset
