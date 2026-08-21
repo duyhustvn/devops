@@ -38,3 +38,31 @@ services:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
       - ./config.d:/etc/clickhouse-server/config.d:ro
+
+  # ========================================================
+  # HAPROXY - Load Balancer cho cụm ClickHouse
+  # ========================================================
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: dwh-haproxy-node3
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+  # ========================================================
+  # KEEPALIVED - Quản lý VIP 192.168.56.110
+  # ========================================================
+  keepalived:
+    build:
+      context: ./keepalived
+    container_name: dwh-keepalived-node3
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    volumes:
+      - ./keepalived/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+      - ./keepalived/check_haproxy.sh:/etc/keepalived/check_haproxy.sh:ro

@@ -1,9 +1,11 @@
-# Cụm Data Warehouse 3 Node: ClickHouse Cluster (với ClickHouse Keeper) & Apache Superset
+# Cụm Data Warehouse 3 Node: ClickHouse Cluster (với Keeper) & Apache Superset (HAProxy + Keepalived HA)
 
-Hệ thống Data Warehouse phân tán 3 Node kết hợp Business Intelligence (BI) Dashboard:
+Hệ thống Data Warehouse phân tán 3 Node kết hợp Business Intelligence (BI) Dashboard với kiến trúc High Availability (HA) & Load Balancing:
 - **ClickHouse Cluster (`clickhouse/clickhouse-server:26.4`)**: 3 Node phân tán hỗ trợ MPP (Massively Parallel Processing), sao chép dữ liệu (`ReplicatedMergeTree`) và phân tán bảng (`Distributed Engine`).
 - **ClickHouse Keeper (Tích hợp trong ClickHouse)**: Thay thế hoàn toàn ZooKeeper cồng kềnh, chạy giao thức đồng thuận Raft (Quorum 3 Node) nhẹ và ổn định.
-- **Apache Superset (`apache/superset:6.1.0`)**: Dashboard trực quan hóa và SQL Lab trên Node 1.
+- **HAProxy 2.8**: Cân bằng tải HTTP (port 8124 $\rightarrow$ 8123) và Native TCP (port 9004 $\rightarrow$ 9000), chủ động kiểm tra sức khỏe (`GET /ping`) trên cả 3 node ClickHouse.
+- **Keepalived 2.0**: Quản lý địa chỉ IP ảo **VIP `192.168.56.110`** nổi trên 3 node, tự động failover tức thì khi có sự cố.
+- **Apache Superset (`apache/superset:6.1.0`)**: Dashboard trực quan hóa và SQL Lab trên Node 1 kết nối qua VIP `192.168.56.110:8124`.
 - **PostgreSQL 16 & Redis 8**: Metadata và Cache cho Superset trên Node 1.
 
 > [!NOTE]
@@ -17,10 +19,16 @@ Hệ thống Data Warehouse phân tán 3 Node kết hợp Business Intelligence 
 docker-images/datawarehouse/cluster-3nodes/
 ├── README.md
 ├── node1/                                # Triển khai trên Node 1 (192.168.56.111)
-│   ├── docker-compose.yml                # ClickHouse + Keeper + Superset + Postgres + Redis
+│   ├── docker-compose.yml                # ClickHouse + Keeper + HAProxy + Keepalived + Superset Stack
 │   ├── config.d/
 │   │   ├── keeper.xml                    # server_id = 1
 │   │   └── cluster.xml                   # shard = 1, replica = node-01
+│   ├── haproxy/
+│   │   └── haproxy.cfg                   # LB frontend :8124, :9004, :8404 -> Backend 3 node ClickHouse
+│   ├── keepalived/
+│   │   ├── Dockerfile
+│   │   ├── check_haproxy.sh              # Script kiểm tra sức khỏe HAProxy
+│   │   └── keepalived.conf               # VRRP MASTER (Priority 101, VIP 192.168.56.110)
 │   ├── secrets/
 │   │   ├── clickhouse_password.txt
 │   │   ├── postgres_password.txt
@@ -31,17 +39,29 @@ docker-images/datawarehouse/cluster-3nodes/
 │       ├── requirements-local.txt
 │       └── superset_config.py
 ├── node2/                                # Triển khai trên Node 2 (192.168.56.112)
-│   ├── docker-compose.yml                # ClickHouse + Keeper
+│   ├── docker-compose.yml                # ClickHouse + Keeper + HAProxy + Keepalived
 │   ├── config.d/
 │   │   ├── keeper.xml                    # server_id = 2
 │   │   └── cluster.xml                   # shard = 2, replica = node-02
+│   ├── haproxy/
+│   │   └── haproxy.cfg                   # Cân bằng tải sang 3 node ClickHouse
+│   ├── keepalived/
+│   │   ├── Dockerfile
+│   │   ├── check_haproxy.sh
+│   │   └── keepalived.conf               # VRRP BACKUP (Priority 100)
 │   └── secrets/
 │       └── clickhouse_password.txt
 └── node3/                                # Triển khai trên Node 3 (192.168.56.113)
-    ├── docker-compose.yml                # ClickHouse + Keeper
+    ├── docker-compose.yml                # ClickHouse + Keeper + HAProxy + Keepalived
     ├── config.d/
     │   ├── keeper.xml                    # server_id = 3
     │   └── cluster.xml                   # shard = 3, replica = node-03
+    ├── haproxy/
+    │   └── haproxy.cfg                   # Cân bằng tải sang 3 node ClickHouse
+    ├── keepalived/
+    │   ├── Dockerfile
+    │   ├── check_haproxy.sh
+    │   └── keepalived.conf               # VRRP BACKUP (Priority 99)
     └── secrets/
         └── clickhouse_password.txt
 ```
@@ -50,52 +70,77 @@ docker-images/datawarehouse/cluster-3nodes/
 
 ## 2. Yêu cầu Mạng & Chi tiết các Port cần mở (Network Requirements)
 
-Để cụm 3 Node hoạt động ổn định và đồng bộ dữ liệu song song, các port sau cần được mở trên Firewall (UFW / Firewalld / Security Group) giữa các node:
+Để cụm 3 Node hoạt động ổn định và có tính sẵn sàng cao (High Availability), các port sau cần được mở trên Firewall (UFW / Firewalld / Security Group) giữa các node:
 
 ### 2.1. Bảng ma trận các Port cần mở
 
 | Port | Giao thức | Dịch vụ | Chiều kết nối (Direction) | Mục đích sử dụng |
 | :--- | :---: | :--- | :--- | :--- |
+| **`112`** | VRRP | **Keepalived VRRP** | **Node $\leftrightarrow$ Node** | Giao thức VRRP đồng bộ và giữ Virtual IP (`192.168.56.110`) giữa 3 node |
+| **`8124`** | TCP | **HAProxy ClickHouse HTTP** | Client / Superset $\rightarrow$ **VIP:8124** | **Cổng Gateway chính** cho Superset, Grafana, HTTP API (cân bằng tải 3 node) |
+| **`9004`** | TCP | **HAProxy Native TCP** | Client $\rightarrow$ **VIP:9004** | **Cổng Gateway chính** cho `clickhouse-client` CLI, ETL pipelines |
+| **`8404`** | TCP | **HAProxy Stats UI** | Browser $\rightarrow$ Node / VIP | Dashboard giám sát trạng thái UP/DOWN của 3 node ClickHouse theo thời gian thực |
 | **`9234`** | TCP | **Keeper Raft** | **Node $\leftrightarrow$ Node** (3 node 2 chiều) | Trao đổi Heartbeat, bầu Leader và đồng thuận Raft giữa 3 Keeper |
 | **`9181`** | TCP | **Keeper Client** | **Node $\leftrightarrow$ Node** | ClickHouse Server kết nối vào Keeper để lấy lock DDL, đồng bộ metadata |
 | **`9009`** | TCP | **Interserver Sync** | **Node $\leftrightarrow$ Node** | Sao chép và đồng bộ các file dữ liệu bảng (`ReplicatedMergeTree`) giữa các node |
-| **`9000`** | TCP | **ClickHouse Native TCP** | **Node $\leftrightarrow$ Node** & Client $\rightarrow$ Node | Chạy truy vấn phân tán (`Distributed Query`) giữa các node, `clickhouse-client` CLI |
-| **`8123`** | TCP | **ClickHouse HTTP** | Client / Superset $\rightarrow$ Node | Superset, Grafana, Web Client kết nối truy vấn qua HTTP API |
+| **`9000`** | TCP | **ClickHouse Native TCP** | Backend nội bộ | Native port của từng instance ClickHouse (HAProxy forward vào đây) |
+| **`8123`** | TCP | **ClickHouse HTTP** | Backend nội bộ | HTTP port của từng instance ClickHouse (HAProxy health check `/ping` và forward vào đây) |
 | **`8088`** | TCP | **Superset Web UI** | Browser $\rightarrow$ Node 1 | Người dùng truy cập Dashboard và SQL Lab |
 
 ```mermaid
-flowchart LR
-    subgraph External ["Client & BI"]
+flowchart TD
+    subgraph Clients ["Clients & BI"]
         Browser["Trình duyệt User"]
+        SupersetApp["Superset App (Node 1)"]
+        CLI["clickhouse-client / ETL"]
     end
 
-    subgraph N1 ["Node 1 (192.168.56.111)"]
+    subgraph VIP_Layer ["High Availability & Gateway Layer (Keepalived VIP: 192.168.56.110)"]
+        VIP["Virtual IP (192.168.56.110)<br/>:8124 (HTTP) | :9004 (TCP) | :8404 (Stats)"]
+    end
+
+    subgraph N1 ["Node 1 (192.168.56.111) - Master (Priority 101)"]
+        HAP1["HAProxy :8124, :9004"]
+        KP_V1["Keepalived"]
         CH1["ClickHouse :8123, :9000"]
-        KP1["Keeper :9181, :9234"]
-        SS["Superset :8088"]
+        KEEPER1["Keeper :9181, :9234"]
+        SS["Superset Web :8088"]
     end
 
-    subgraph N2 ["Node 2 (192.168.56.112)"]
+    subgraph N2 ["Node 2 (192.168.56.112) - Backup (Priority 100)"]
+        HAP2["HAProxy :8124, :9004"]
+        KP_V2["Keepalived"]
         CH2["ClickHouse :8123, :9000"]
-        KP2["Keeper :9181, :9234"]
+        KEEPER2["Keeper :9181, :9234"]
     end
 
-    subgraph N3 ["Node 3 (192.168.56.113)"]
+    subgraph N3 ["Node 3 (192.168.56.113) - Backup (Priority 99)"]
+        HAP3["HAProxy :8124, :9004"]
+        KP_V3["Keepalived"]
         CH3["ClickHouse :8123, :9000"]
-        KP3["Keeper :9181, :9234"]
+        KEEPER3["Keeper :9181, :9234"]
     end
 
-    Browser -->|"TCP 8088"| SS
-    SS -->|"TCP 8123"| CH1
+    Browser -->|"HTTP 8088"| SS
+    SupersetApp -->|"HTTP 8124"| VIP
+    CLI -->|"TCP 9004"| VIP
 
-    %% Inter-node
-    CH1 <-->|"TCP 9000: Distributed Query<br/>TCP 9009: Data Sync"| CH2
-    CH2 <-->|"TCP 9000: Distributed Query<br/>TCP 9009: Data Sync"| CH3
-    CH3 <-->|"TCP 9000: Distributed Query<br/>TCP 9009: Data Sync"| CH1
+    VIP -.->|"Chuyển tiếp đến Node giữ VIP"| HAP1
+    VIP -.->|"Failover khi Node 1 sập"| HAP2
+    VIP -.->|"Failover khi Node 2 sập"| HAP3
 
-    KP1 <-->|"TCP 9234: Raft Quorum<br/>TCP 9181: Coordination"| KP2
-    KP2 <-->|"TCP 9234: Raft Quorum<br/>TCP 9181: Coordination"| KP3
-    KP3 <-->|"TCP 9234: Raft Quorum<br/>TCP 9181: Coordination"| KP1
+    HAP1 -->|"Load Balancing / Health Check"| CH1
+    HAP1 -->|"Load Balancing / Health Check"| CH2
+    HAP1 -->|"Load Balancing / Health Check"| CH3
+
+    %% Raft & Data Sync
+    CH1 <-->|"Data Sync :9009 / Query :9000"| CH2
+    CH2 <-->|"Data Sync :9009 / Query :9000"| CH3
+    CH3 <-->|"Data Sync :9009 / Query :9000"| CH1
+
+    KEEPER1 <-->|"Raft Quorum :9234 / Coordination :9181"| KEEPER2
+    KEEPER2 <-->|"Raft Quorum :9234 / Coordination :9181"| KEEPER3
+    KEEPER3 <-->|"Raft Quorum :9234 / Coordination :9181"| KEEPER1
 ```
 
 ---
@@ -104,56 +149,25 @@ flowchart LR
 
 #### Cho Ubuntu / Debian (UFW):
 ```bash
-# 1. Cho phép kết nối nội bộ giữa 3 node (Khuyên dùng: mở toàn bộ dải IP private mạng nội bộ)
+# 1. Cho phép VRRP cho Keepalived
+sudo ufw allow proto vrrp comment 'Keepalived VRRP'
+
+# 2. Cho phép kết nối nội bộ giữa 3 node
+sudo ufw allow from 192.168.56.0/24 to any port 8124 proto tcp comment 'HAProxy ClickHouse HTTP LB'
+sudo ufw allow from 192.168.56.0/24 to any port 9004 proto tcp comment 'HAProxy ClickHouse TCP LB'
+sudo ufw allow from 192.168.56.0/24 to any port 8404 proto tcp comment 'HAProxy Stats UI'
 sudo ufw allow from 192.168.56.0/24 to any port 9234 proto tcp comment 'ClickHouse Keeper Raft'
 sudo ufw allow from 192.168.56.0/24 to any port 9181 proto tcp comment 'ClickHouse Keeper Client'
 sudo ufw allow from 192.168.56.0/24 to any port 9009 proto tcp comment 'ClickHouse Data Replication'
 sudo ufw allow from 192.168.56.0/24 to any port 9000 proto tcp comment 'ClickHouse Native TCP'
 sudo ufw allow from 192.168.56.0/24 to any port 8123 proto tcp comment 'ClickHouse HTTP'
 
-# 2. Mở cổng Superset cho người dùng bên ngoài (chỉ cần chạy trên Node 1)
+# 3. Mở cổng Superset Web UI (trên Node 1)
 sudo ufw allow 8088/tcp comment 'Apache Superset Web UI'
 
-# 3. Reload UFW
+# 4. Reload UFW
 sudo ufw reload
 ```
-
-#### Cho RHEL / Rocky Linux / CentOS (Firewalld):
-```bash
-# 1. Mở các port giao tiếp cụm nội bộ
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9234" protocol="tcp" accept'
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9181" protocol="tcp" accept'
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9009" protocol="tcp" accept'
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="9000" protocol="tcp" accept'
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.56.0/24" port port="8123" protocol="tcp" accept'
-
-# 2. Mở port Superset trên Node 1
-sudo firewall-cmd --permanent --add-port=8088/tcp
-
-# 3. Reload Firewalld
-sudo firewall-cmd --reload
-```
-
----
-
-### 2.3. Tại sao ClickHouse trong Cụm cần chạy `network_mode: host`?
-
-Trong môi trường phân tán nhiều node (Multi-node Cluster), việc cấu hình `network_mode: host` cho container ClickHouse là **chuẩn thực hành tốt nhất (Best Practice)** vì các lý do cốt lõi sau:
-
-1. **Khắc phục lỗi DDLWorker & Lệnh `ON CLUSTER` (Tối quan trọng):**
-   * Khi bạn chạy lệnh phân tán `CREATE TABLE ... ON CLUSTER`, ClickHouse tạo một task phân tán trong Keeper chứa danh sách IP thực tế (`192.168.56.111:9000`, `192.168.56.112:9000`, `192.168.56.113:9000`).
-   * Tiến trình `DDLWorker` trên mỗi node quét qua danh sách này và đối chiếu với card mạng cục bộ (`getifaddrs()`).
-   * Nếu dùng **Docker Bridge**, container chỉ nhìn thấy IP ảo nội bộ của Docker (`172.18.0.x`), không khớp với IP máy ảo thật $\rightarrow$ ClickHouse bỏ qua task vì nghĩ task dành cho máy khác $\rightarrow$ Gây lỗi treo `TIMEOUT_EXCEEDED (Code 159)`.
-   * Khi dùng **Host Network**, ClickHouse gắn trực tiếp vào card mạng thật (`enp0s8`), nhận diện chính xác `is_local = 1` và thực thi DDL phân tán tức thì.
-
-2. **Triệt tiêu độ trễ mạng cho Đồng thuận Raft (ClickHouse Keeper) & Sao chép dữ liệu:**
-   * Cụm ClickHouse Keeper liên tục trao đổi heartbeat và đồng thuận Raft trên port `9234` theo chu kỳ mili-giây.
-   * Quá trình sao chép phân vùng dữ liệu lớn (Data Parts Sync trên port `9009`) và truy vấn phân tán (port `9000`) đòi hỏi thông lượng mạng tối đa.
-   * `network_mode: host` loại bỏ hoàn toàn tầng trung gian **Docker Bridge NAT và iptables packet forwarding**, giảm thiểu CPU overhead và triệt tiêu độ trễ mạng.
-
-3. **Đơn giản hóa quản trị Port & Network Routing:**
-   * Tránh tình trạng phải map thủ công 5 port phức tạp (`8123, 9000, 9009, 9181, 9234`) trên từng container.
-   * Các node giao tiếp trực tiếp với nhau như thể ClickHouse được cài đặt trực tiếp dạng native binary trên OS máy ảo.
 
 ---
 
@@ -170,35 +184,37 @@ docker compose up -d --build
 Trên máy ảo Node 2 (`192.168.56.112`):
 ```bash
 cd docker-images/datawarehouse/cluster-3nodes/node2
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### Bước 3: Khởi động trên Node 3 (Worker 2)
 Trên máy ảo Node 3 (`192.168.56.113`):
 ```bash
 cd docker-images/datawarehouse/cluster-3nodes/node3
-docker compose up -d
+docker compose up -d --build
 ```
 
 ---
 
-## 4. Kiểm tra Trạng thái Cụm ClickHouse Cluster
+## 4. Kiểm tra Trạng thái Cụm & Tầng High Availability
 
-Truy cập vào ClickHouse CLI trên Node 1:
+### 4.1. Kiểm tra Virtual IP (Keepalived VIP)
+Trên Node 1, kiểm tra xem card mạng `enp0s8` đã nhận VIP `192.168.56.110` chưa:
 ```bash
-docker exec -it dwh-clickhouse-node1 clickhouse-client -u dwh_user --password dwh_password
+ip addr show enp0s8
+# Kết quả hiển thị: inet 192.168.56.110/24 scope global secondary enp0s8
 ```
 
-Chạy các lệnh kiểm tra:
+### 4.2. Kiểm tra HAProxy Stats Dashboard
+Mở trình duyệt truy cập: **`http://192.168.56.110:8404/stats`** (hoặc `http://192.168.56.111:8404/stats`).
+- Bảng Dashboard hiển thị cả 3 backend node (`node-db-01`, `node-db-02`, `node-db-03`) đều có trạng thái màu xanh lá cây (**UP**).
 
-```sql
--- 1. Kiểm tra danh sách các Node trong cụm
-SELECT cluster, shard_num, replica_num, host_name, port, is_local 
-FROM system.clusters 
-WHERE cluster = 'dwh_cluster_3node';
-
--- 2. Kiểm tra trạng thái đồng bộ ClickHouse Keeper
-SELECT * FROM system.zookeeper WHERE path = '/';
+### 4.3. Kiểm tra ClickHouse Cluster qua VIP Gateway
+Chạy lệnh `clickhouse-client` kết nối qua cổng Load Balancer Native TCP (`9004`):
+```bash
+docker run --rm -it --network host clickhouse/clickhouse-server:26.4 \
+    clickhouse-client --host 192.168.56.110 --port 9004 -u dwh_user --password dwh_password \
+    --query "SELECT cluster, shard_num, replica_num, host_name, port, is_local FROM system.clusters WHERE cluster = 'dwh_cluster_3node';"
 ```
 
 ---
@@ -244,14 +260,34 @@ SELECT hostName(), count() FROM analytics.orders_local GROUP BY hostName();
 
 ---
 
-## 6. Kết nối Superset vào ClickHouse Cluster
+## 6. Kết nối Superset vào ClickHouse Cluster (Qua VIP Gateway)
+
+Để đảm bảo Superset **không bao giờ bị mất kết nối** kể cả khi có node ClickHouse bị sự cố:
 
 1. Mở trình duyệt truy cập: **`http://192.168.56.111:8088`** (hoặc `http://localhost:8088`).
 2. Đăng nhập: `admin` / `admin_password`.
 3. Vào **Settings** $\rightarrow$ **Database Connections** $\rightarrow$ **+ Database**.
-4. Chọn **ClickHouse Connect** và nhập chuỗi SQLAlchemy URI:
+4. Chọn **ClickHouse Connect** và nhập chuỗi SQLAlchemy URI trỏ tới **VIP:8124**:
    ```text
-   clickhouse+connect://dwh_user:dwh_password@clickhouse:8123/analytics
+   clickhousedb://dwh_user:dwh_password@192.168.56.110:8124/analytics
    ```
+   *(Hoặc format `clickhouse+connect://dwh_user:dwh_password@192.168.56.110:8124/analytics`)*
 5. Bấm **Test Connection** $\rightarrow$ **Connect**.
-6. Khi tạo Dataset trên Superset, chọn bảng **`orders`** (Bảng phân tán `Distributed`), Superset sẽ tự động tận dụng sức mạnh tính toán song song của toàn bộ 3 Node ClickHouse!
+6. Khi tạo Dataset trên Superset, chọn bảng **`orders`** (Bảng phân tán `Distributed`).
+
+---
+
+## 7. Thử nghiệm Cơ chế Failover & High Availability
+
+1. **Thử nghiệm 1 Node ClickHouse bị chết**:
+   - Dừng container ClickHouse trên Node 1:
+     ```bash
+     docker stop dwh-clickhouse-node1
+     ```
+   - Quan sát trên Dashboard HAProxy (`http://192.168.56.110:8404/stats`): `node-db-01` chuyển sang trạng thái **DOWN** sau 2 giây.
+   - Quay lại Superset và refresh Dashboard hoặc chạy SQL query: **Truy vấn vẫn thành công 100%** do HAProxy đã tự động điều hướng sang `node-db-02` và `node-db-03`.
+
+2. **Thử nghiệm Node 1 (Master) bị sập hoàn toàn**:
+   - Dừng toàn bộ stack trên Node 1 hoặc tắt card mạng Node 1.
+   - Keepalived trên Node 2 tự động tiếp quản VIP `192.168.56.110`.
+   - Mọi kết nối từ các client khác đến `192.168.56.110:8124` vẫn thông suốt.
