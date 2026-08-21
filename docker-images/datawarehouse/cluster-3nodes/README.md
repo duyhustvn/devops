@@ -68,24 +68,9 @@ docker-images/datawarehouse/cluster-3nodes/
 
 ---
 
-## 2. Yêu cầu Mạng & Chi tiết các Port cần mở (Network Requirements)
+## 2. Kiến trúc Tổng thể Hệ thống & Luồng Dữ liệu (System Architecture & Data Flow)
 
-Để cụm 3 Node hoạt động ổn định và có tính sẵn sàng cao (High Availability), các port sau cần được mở trên Firewall (UFW / Firewalld / Security Group) giữa các node:
-
-### 2.1. Bảng ma trận các Port cần mở
-
-| Port | Giao thức | Dịch vụ | Chiều kết nối (Direction) | Mục đích sử dụng |
-| :--- | :---: | :--- | :--- | :--- |
-| **`112`** | VRRP | **Keepalived VRRP** | **Node $\leftrightarrow$ Node** | Giao thức VRRP đồng bộ và giữ Virtual IP (`192.168.56.110`) giữa 3 node |
-| **`8124`** | TCP | **HAProxy ClickHouse HTTP** | Client / Superset $\rightarrow$ **VIP:8124** | **Cổng Gateway chính** cho Superset, Grafana, HTTP API (cân bằng tải 3 node) |
-| **`9001`** | TCP | **HAProxy Native TCP** | Client $\rightarrow$ **VIP:9001** | **Cổng Gateway chính** cho `clickhouse-client` CLI, ETL pipelines |
-| **`8404`** | TCP | **HAProxy Stats UI** | Browser $\rightarrow$ Node / VIP | Dashboard giám sát trạng thái UP/DOWN của 3 node ClickHouse theo thời gian thực |
-| **`9234`** | TCP | **Keeper Raft** | **Node $\leftrightarrow$ Node** (3 node 2 chiều) | Trao đổi Heartbeat, bầu Leader và đồng thuận Raft giữa 3 Keeper |
-| **`9181`** | TCP | **Keeper Client** | **Node $\leftrightarrow$ Node** | ClickHouse Server kết nối vào Keeper để lấy lock DDL, đồng bộ metadata |
-| **`9009`** | TCP | **Interserver Sync** | **Node $\leftrightarrow$ Node** | Sao chép và đồng bộ các file dữ liệu bảng (`ReplicatedMergeTree`) giữa các node |
-| **`9000`** | TCP | **ClickHouse Native TCP** | Backend nội bộ | Native port của từng instance ClickHouse (HAProxy forward vào đây) |
-| **`8123`** | TCP | **ClickHouse HTTP** | Backend nội bộ | HTTP port của từng instance ClickHouse (HAProxy health check `/ping` và forward vào đây) |
-| **`8088`** | TCP | **Superset Web UI** | Browser $\rightarrow$ Node 1 | Người dùng truy cập Dashboard và SQL Lab |
+### 2.1. Sơ đồ Kiến trúc Cụm 3 Node (Cluster Architecture Diagram)
 
 ```mermaid
 flowchart TD
@@ -143,9 +128,106 @@ flowchart TD
     KEEPER3 <-->|"Raft Quorum :9234 / Coordination :9181"| KEEPER1
 ```
 
+### 2.2. Vai trò của từng thành phần trong Hệ thống (Component Roles)
+
+| Thành phần | Vai trò chính trong Kiến trúc |
+| :--- | :--- |
+| **Keepalived (VRRP VIP)** | Quản lý địa chỉ IP ảo **VIP `192.168.56.110`**. Đảm bảo luôn có 1 máy chủ nhận traffic kể cả khi Node Master gặp sự cố (Tự động chuyển VIP sang Node Backup trong vòng < 1 giây). |
+| **HAProxy (Load Balancer)** | **Bộ cân bằng tải & Cổng Gateway**: Nhận kết nối từ VIP, phân phối đều truy vấn (Round Robin) sang 3 node ClickHouse. Tự động kiểm tra sức khỏe (`GET /ping`) mỗi 2s để cô lập node lỗi và phục hồi node khi sống lại. |
+| **ClickHouse Cluster (MPP DB)** | Lưu trữ và xử lý truy vấn phân tán quy mô lớn. Hỗ trợ Sharding (chia nhỏ dữ liệu trên 3 shard) và sao chép (`ReplicatedMergeTree`). |
+| **ClickHouse Keeper (Raft Quorum)** | Hệ thống phân tán đồng thuận Raft (thay thế ZooKeeper) tích hợp sẵn trong ClickHouse. Quản lý metadata, khóa DDL (`ON CLUSTER`) và điều phối sao chép dữ liệu. |
+| **Apache Superset (BI & Analytics)** | Giao diện trực quan hóa dữ liệu và SQL Lab trên Node 1, kết nối vào cụm thông qua địa chỉ VIP `192.168.56.110:8124`. |
+| **PostgreSQL 16 & Redis 8** | Lưu trữ metadata (người dùng, dashboard, chart) và bộ nhớ đệm (Cache/Celery) cho Apache Superset. |
+
+#### Chi tiết: Cơ chế Bầu chọn & Chuyển giao MASTER của Keepalived (VRRP Election)
+
+Hệ thống sử dụng giao thức **VRRP (Virtual Router Redundancy Protocol - RFC 3768)** với địa chỉ Virtual Router ID `56` để quyết định node nào giữ Virtual IP (`192.168.56.110`):
+
+1. **Phân cấp Độ ưu tiên (Priority-based Initial Election)**:
+   - **Node 1 (`192.168.56.111`)**: Cấu hình `state MASTER`, `priority 101` $\rightarrow$ **Giữ VIP khi khởi động**.
+   - **Node 2 (`192.168.56.112`)**: Cấu hình `state BACKUP`, `priority 100` $\rightarrow$ Đứng đầu danh sách dự phòng.
+   - **Node 3 (`192.168.56.113`)**: Cấu hình `state BACKUP`, `priority 99` $\rightarrow$ Dự phòng bậc 2.
+   - *Nguyên tắc*: Node có điểm **`priority` cao nhất** trong cụm sẽ giành quyền làm **MASTER** và gắn địa chỉ VIP `192.168.56.110` lên card mạng `enp0s8`.
+
+2. **Cơ chế Giữ quyền qua VRRP Advertisement Heartbeat**:
+   - Định kỳ mỗi 1 giây (`advert_int 1`), node MASTER gửi gói tin VRRP Advertisement qua Unicast tới Node 2 và Node 3 để thông báo *"Tôi vẫn khỏe mạnh và đang giữ Priority 101"*.
+   - Miễn là các node BACKUP còn nhận được tin này, chúng duy trì trạng thái chờ (không gán VIP).
+
+3. **Cơ chế Giảm điểm Động khi HAProxy trên Master gặp sự cố (`track_script`)**:
+   - Mỗi node chạy script `check_haproxy.sh` định kỳ 2s (`curl http://127.0.0.1:8404/stats`) để kiểm tra tiến trình HAProxy cục bộ:
+     ```conf
+     vrrp_script check_haproxy {
+         script "/etc/keepalived/check_haproxy.sh"
+         interval 2
+         weight -20    # Trừ 20 điểm nếu HAProxy chết
+         fall 2
+         rise 2
+     }
+     ```
+   - Nếu HAProxy trên Node 1 bị tắt hoặc sập:
+     - Script báo lỗi $\rightarrow$ Keepalived Node 1 tự động **trừ 20 điểm**: Priority Node 1 giảm từ `101` xuống **`81`** ($101 - 20 = 81$).
+     - Node 2 nhận thấy Priority của Node 1 (`81`) thấp hơn Priority của mình (`100`) $\rightarrow$ **Node 2 lập tức tự thăng cấp lên MASTER**, gắn VIP `192.168.56.110` và phát gói tin Gratuitous ARP để cập nhật mạng.
+
+4. **Trường hợp Máy chủ Master sập hoàn toàn (Dead Host / Network Cut)**:
+   - Node 1 không còn gửi gói tin VRRP Advertisement.
+   - Sau thời gian timeout (`3 * advert_int = 3 giây`), Node 2 (có priority 100 cao nhất còn lại) sẽ tự động tiếp quản quyền MASTER và giữ VIP.
+
+5. **Cơ chế Tái chiếm quyền (Preemption & Auto Failback)**:
+   - Khi Node 1 hoặc HAProxy trên Node 1 được khắc phục: Điểm priority của Node 1 khôi phục về `101`.
+   - Do `101 > 100`, Node 1 sẽ chủ động phát tin VRRP giành lại quyền MASTER (Preempt) và kéo VIP về Node 1 một cách êm ái, hoàn toàn không làm gián đoạn các kết nối đang chạy.
+
 ---
 
-### 2.2. Lệnh cấu hình Firewall mẫu
+### 2.3. Luồng Điều phối Truy vấn & Khả năng Tự phục hồi (Query Execution & Failover Flow)
+
+Khi người dùng thực thi truy vấn từ Apache Superset hoặc công cụ phân tích, luồng dữ liệu diễn ra như sau:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Người dùng Superset
+    participant SS as Superset App (Node 1)
+    participant VIP as Keepalived (VIP: 192.168.56.110)
+    participant HA as HAProxy (:8124)
+    participant CH1 as ClickHouse Node 1 (UP)
+    participant CH2 as ClickHouse Node 2 (UP)
+    participant CH3 as ClickHouse Node 3 (DOWN ❌)
+
+    User->>SS: Mở Dashboard / Chạy SQL Query
+    SS->>VIP: Gửi query đến VIP 192.168.56.110:8124
+    VIP->>HA: Chuyển tiếp tới tiến trình HAProxy
+    Note over HA: HAProxy phát hiện Node 3 đang DOWN<br/>Tự động routing sang Node 1 hoặc Node 2 (Round Robin)
+    HA->>CH1: Chuyển query tới Node 1 (192.168.56.111:8123)
+    Note over CH1: Node 1 làm Query Coordinator:<br/>Tự gom dữ liệu từ các node phân tán
+    CH1-->>HA: Trả kết quả dữ liệu
+    HA-->>SS: Chuyển tiếp kết quả về Superset
+    SS-->>User: Hiển thị biểu đồ / Bảng dữ liệu hoàn tất
+```
+
+---
+
+## 3. Yêu cầu Mạng & Cấu hình Firewall (Network Requirements & Firewall Rules)
+
+Để cụm 3 Node hoạt động ổn định và có tính sẵn sàng cao (High Availability), các port sau cần được mở trên Firewall (UFW / Firewalld / Security Group) giữa các node:
+
+### 3.1. Bảng ma trận các Port cần mở
+
+| Port | Giao thức | Dịch vụ | Chiều kết nối (Direction) | Mục đích sử dụng |
+| :--- | :---: | :--- | :--- | :--- |
+| **`112`** | VRRP | **Keepalived VRRP** | **Node $\leftrightarrow$ Node** | Giao thức VRRP đồng bộ và giữ Virtual IP (`192.168.56.110`) giữa 3 node |
+| **`8124`** | TCP | **HAProxy ClickHouse HTTP** | Client / Superset $\rightarrow$ **VIP:8124** | **Cổng Gateway chính** cho Superset, Grafana, HTTP API (cân bằng tải 3 node) |
+| **`9001`** | TCP | **HAProxy Native TCP** | Client $\rightarrow$ **VIP:9001** | **Cổng Gateway chính** cho `clickhouse-client` CLI, ETL pipelines |
+| **`8404`** | TCP | **HAProxy Stats UI** | Browser $\rightarrow$ Node / VIP | Dashboard giám sát trạng thái UP/DOWN của 3 node ClickHouse theo thời gian thực |
+| **`9234`** | TCP | **Keeper Raft** | **Node $\leftrightarrow$ Node** (3 node 2 chiều) | Trao đổi Heartbeat, bầu Leader và đồng thuận Raft giữa 3 Keeper |
+| **`9181`** | TCP | **Keeper Client** | **Node $\leftrightarrow$ Node** | ClickHouse Server kết nối vào Keeper để lấy lock DDL, đồng bộ metadata |
+| **`9009`** | TCP | **Interserver Sync** | **Node $\leftrightarrow$ Node** | Sao chép và đồng bộ các file dữ liệu bảng (`ReplicatedMergeTree`) giữa các node |
+| **`9000`** | TCP | **ClickHouse Native TCP** | Backend nội bộ | Native port của từng instance ClickHouse (HAProxy forward vào đây) |
+| **`8123`** | TCP | **ClickHouse HTTP** | Backend nội bộ | HTTP port của từng instance ClickHouse (HAProxy health check `/ping` và forward vào đây) |
+| **`8088`** | TCP | **Superset Web UI** | Browser $\rightarrow$ Node 1 | Người dùng truy cập Dashboard và SQL Lab |
+
+---
+
+### 3.2. Lệnh cấu hình Firewall mẫu
 
 #### Cho Ubuntu / Debian (UFW):
 ```bash
@@ -171,7 +253,7 @@ sudo ufw reload
 
 ---
 
-## 3. Hướng dẫn Triển khai Từng Node
+## 4. Hướng dẫn Triển khai Từng Node
 
 ### Bước 1: Khởi động trên Node 1 (Master)
 Trên máy ảo Node 1 (`192.168.56.111`):
@@ -196,20 +278,20 @@ docker compose up -d --build
 
 ---
 
-## 4. Kiểm tra Trạng thái Cụm & Tầng High Availability
+## 5. Kiểm tra Trạng thái Cụm & Sức khỏe Dịch vụ (Health Check & Verification)
 
-### 4.1. Kiểm tra Virtual IP (Keepalived VIP)
+### 5.1. Kiểm tra Virtual IP (Keepalived VIP)
 Trên Node 1, kiểm tra xem card mạng `enp0s8` đã nhận VIP `192.168.56.110` chưa:
 ```bash
 ip addr show enp0s8
 # Kết quả hiển thị: inet 192.168.56.110/24 scope global secondary enp0s8
 ```
 
-### 4.2. Kiểm tra HAProxy Stats Dashboard
+### 5.2. Kiểm tra HAProxy Stats Dashboard
 Mở trình duyệt truy cập: **`http://192.168.56.110:8404/stats`** (hoặc `http://192.168.56.111:8404/stats`).
 - Bảng Dashboard hiển thị cả 3 backend node (`node-db-01`, `node-db-02`, `node-db-03`) đều có trạng thái màu xanh lá cây (**UP**).
 
-### 4.3. Kiểm tra ClickHouse Cluster qua VIP Gateway
+### 5.3. Kiểm tra ClickHouse Cluster qua VIP Gateway
 Chạy lệnh `clickhouse-client` kết nối qua cổng Load Balancer Native TCP (`9001`):
 ```bash
 docker run --rm -it --network host clickhouse/clickhouse-server:26.4 \
@@ -219,12 +301,12 @@ docker run --rm -it --network host clickhouse/clickhouse-server:26.4 \
 
 ---
 
-## 5. Hướng dẫn Tạo Bảng Phân Tán (Distributed Table)
+## 6. Hướng dẫn Tạo Bảng Phân Tán (Distributed Table)
 
 > [!TIP]
 > Nhờ tính năng **DDL Distributed (`ON CLUSTER dwh_cluster_3node`)** kết hợp với ClickHouse Keeper, bạn **chỉ cần thực thi các câu lệnh SQL trên duy nhất 1 node (ví dụ: Node 1)**, ClickHouse sẽ tự động phân phối và tạo Database/Bảng đồng bộ trên toàn bộ 3 node.
 
-### 5.1. Cách truy cập vào ClickHouse CLI
+### 6.1. Cách truy cập vào ClickHouse CLI
 
 Bạn có thể chọn 1 trong các cách sau để thực thi câu lệnh SQL:
 
@@ -279,7 +361,7 @@ docker run --rm -it --network host clickhouse/clickhouse-server:26.4 \
 
 ---
 
-### 5.2. Chi tiết các câu lệnh SQL và Cơ chế hoạt động
+### 6.2. Chi tiết các câu lệnh SQL và Cơ chế hoạt động
 
 Trong ClickHouse Cluster, mô hình chuẩn gồm **Bảng Cục Bộ (`_local`)** lưu dữ liệu thực tế và **Bảng Phân Tán (`Distributed`)** làm Router nhận truy vấn:
 
@@ -323,7 +405,7 @@ SELECT count() AS total_orders, sum(amount) AS total_amount FROM analytics.order
 
 ---
 
-## 6. Kết nối Superset vào ClickHouse Cluster (Qua VIP Gateway)
+## 7. Kết nối Superset vào ClickHouse Cluster (Qua VIP Gateway)
 
 Để đảm bảo Superset **không bao giờ bị mất kết nối** kể cả khi có node ClickHouse bị sự cố:
 
@@ -340,7 +422,7 @@ SELECT count() AS total_orders, sum(amount) AS total_amount FROM analytics.order
 
 ---
 
-## 7. Thử nghiệm Cơ chế Failover & High Availability
+## 8. Thử nghiệm Cơ chế Failover & High Availability
 
 1. **Thử nghiệm 1 Node ClickHouse bị chết**:
    - Dừng container ClickHouse trên Node 1:
