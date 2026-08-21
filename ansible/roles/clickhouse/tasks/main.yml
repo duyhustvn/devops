@@ -1,0 +1,68 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for clickhouse
+
+- name: Create deployment directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+    recurse: yes
+  loop:
+    - "{{ clickhouse_deploy_dir }}"
+    - "{{ clickhouse_deploy_dir }}/config.d"
+    - "{{ clickhouse_deploy_dir }}/secrets"
+    - "{{ clickhouse_deploy_dir }}/data"
+    - "{{ clickhouse_deploy_dir }}/logs"
+  tags: [config]
+
+- name: Generate clickhouse secrets
+  template:
+    src: clickhouse_password.txt.j2
+    dest: "{{ clickhouse_deploy_dir }}/secrets/clickhouse_password.txt"
+    mode: "0600"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate keeper.xml configuration
+  template:
+    src: keeper.xml.j2
+    dest: "{{ clickhouse_deploy_dir }}/config.d/keeper.xml"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate cluster.xml configuration
+  template:
+    src: cluster.xml.j2
+    dest: "{{ clickhouse_deploy_dir }}/config.d/cluster.xml"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ clickhouse_deploy_dir }}/docker-compose.yml"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Deploy ClickHouse Cluster
+  shell: |
+    docker compose up -d --force-recreate
+  args:
+    chdir: "{{ clickhouse_deploy_dir }}"
+  register: clickhouse_deploy_result
+  tags: [deploy]
+
+- name: Debug deploy result
+  debug:
+    var: clickhouse_deploy_result
+  tags: [deploy]

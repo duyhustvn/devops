@@ -1,0 +1,15 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for clickhouse
+
+clickhouse_deploy_dir: '/u01/clickhouse'
+clickhouse_image: 'clickhouse/clickhouse-server:26.4'
+clickhouse_cluster_name: 'dwh_cluster_3node'
+clickhouse_db: 'analytics'
+clickhouse_user: 'dwh_user'
+
+clickhouse_http_port: 8123
+clickhouse_tcp_port: 9000
+clickhouse_interserver_port: 9009
+clickhouse_keeper_port: 9181
+clickhouse_keeper_raft_port: 9234

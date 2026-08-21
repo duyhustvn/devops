@@ -1,0 +1,6 @@
+# ClickHouse Cluster deployment variables
+clickhouse_deploy_dir: '/u01/clickhouse'
+clickhouse_image: 'clickhouse/clickhouse-server:26.4'
+clickhouse_cluster_name: 'dwh_cluster_3node'
+clickhouse_db: 'analytics'
+clickhouse_user: 'dwh_user'

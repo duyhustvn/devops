@@ -1,0 +1,26 @@
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+    <interserver_http_host>{{ node_ip | default(ansible_host) }}</interserver_http_host>
+
+    <remote_servers>
+        <{{ clickhouse_cluster_name }}>
+{% for host in groups['clickhouse'] %}
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>{{ hostvars[host].node_ip | default(hostvars[host].ansible_host) }}</host>
+                    <port>{{ clickhouse_tcp_port }}</port>
+                    <user>{{ clickhouse_user }}</user>
+                    <password>{{ clickhouse_password }}</password>
+                </replica>
+            </shard>
+{% endfor %}
+        </{{ clickhouse_cluster_name }}>
+    </remote_servers>
+
+    <macros>
+        <cluster>{{ clickhouse_cluster_name }}</cluster>
+        <shard>{{ clickhouse_shard_id | default(clickhouse_node_id) }}</shard>
+        <replica>{{ clickhouse_replica_name | default(inventory_hostname) }}</replica>
+    </macros>
+</clickhouse>
