@@ -221,9 +221,24 @@ docker run --rm -it --network host clickhouse/clickhouse-server:26.4 \
 
 ## 5. Hướng dẫn Tạo Bảng Phân Tán (Distributed Table)
 
-Trong ClickHouse Cluster, mô hình chuẩn gồm **Bảng Cục Bộ (`_local`)** lưu dữ liệu thực tế và **Bảng Phân Tán (`Distributed`)** làm Router nhận truy vấn:
+> [!TIP]
+> Nhờ tính năng **DDL Distributed (`ON CLUSTER dwh_cluster_3node`)** kết hợp với ClickHouse Keeper, bạn **chỉ cần thực thi các câu lệnh SQL trên duy nhất 1 node (ví dụ: Node 1)**, ClickHouse sẽ tự động phân phối và tạo Database/Bảng đồng bộ trên toàn bộ 3 node.
 
-```sql
+### 5.1. Cách truy cập vào ClickHouse CLI
+
+Bạn có thể chọn 1 trong các cách sau để thực thi câu lệnh SQL:
+
+#### Cách 1: Truy cập CLI tương tác bên trong container Node 1 (Khuyên dùng)
+Đăng nhập SSH vào máy ảo Node 1 (`192.168.56.111`), sau đó chạy:
+```bash
+docker exec -it dwh-clickhouse-node1 clickhouse-client -u dwh_user --password dwh_password --multiline
+```
+*(Tham số `--multiline` cho phép bạn viết câu lệnh SQL trên nhiều dòng và kết thúc bằng dấu chấm phẩy `;`)*
+
+#### Cách 2: Chạy trực tiếp toàn bộ kịch bản SQL (One-liner / Script)
+Trên máy ảo Node 1, thực thi toàn bộ script trong 1 lệnh duy nhất:
+```bash
+docker exec -i dwh-clickhouse-node1 clickhouse-client -u dwh_user --password dwh_password --multiquery << 'EOF'
 -- 1. Tạo Database trên toàn bộ 3 Node
 CREATE DATABASE IF NOT EXISTS analytics ON CLUSTER dwh_cluster_3node;
 
@@ -253,9 +268,57 @@ INSERT INTO analytics.orders (order_id, customer_id, order_date, product_categor
     (6, 1006, '2026-08-03', 'Books', 30.00, 'US'),
     (7, 1007, '2026-08-04', 'Electronics', 320.00, 'JP'),
     (8, 1008, '2026-08-04', 'Home & Living', 210.00, 'SG');
+EOF
+```
 
--- 5. Kiểm tra dữ liệu phân tán trên từng Node
+#### Cách 3: Kết nối từ máy Host/Client qua HAProxy VIP
+```bash
+docker run --rm -it --network host clickhouse/clickhouse-server:26.4 \
+    clickhouse-client --host 192.168.56.110 --port 9001 -u dwh_user --password dwh_password --multiline
+```
+
+---
+
+### 5.2. Chi tiết các câu lệnh SQL và Cơ chế hoạt động
+
+Trong ClickHouse Cluster, mô hình chuẩn gồm **Bảng Cục Bộ (`_local`)** lưu dữ liệu thực tế và **Bảng Phân Tán (`Distributed`)** làm Router nhận truy vấn:
+
+```sql
+-- 1. Tạo Database trên toàn bộ 3 Node
+CREATE DATABASE IF NOT EXISTS analytics ON CLUSTER dwh_cluster_3node;
+
+-- 2. Tạo Bảng Cục Bộ trên toàn bộ 3 Node (ReplicatedMergeTree kết hợp ClickHouse Keeper)
+CREATE TABLE IF NOT EXISTS analytics.orders_local ON CLUSTER dwh_cluster_3node (
+    order_id UInt64,
+    customer_id UInt32,
+    order_date Date,
+    product_category LowCardinality(String),
+    amount Float64,
+    country LowCardinality(String)
+) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/orders', '{replica}')
+ORDER BY (order_date, order_id);
+
+-- 3. Tạo Bảng Phân Tán trên toàn bộ 3 Node (Router điều hướng truy vấn)
+CREATE TABLE IF NOT EXISTS analytics.orders ON CLUSTER dwh_cluster_3node
+AS analytics.orders_local
+ENGINE = Distributed(dwh_cluster_3node, analytics, orders_local, rand());
+
+-- 4. Chèn dữ liệu mẫu vào Bảng Phân Tán (ClickHouse tự băm và phân phối đều xuống 3 Node)
+INSERT INTO analytics.orders (order_id, customer_id, order_date, product_category, amount, country) VALUES
+    (1, 1001, '2026-08-01', 'Electronics', 550.00, 'VN'),
+    (2, 1002, '2026-08-01', 'Fashion', 85.50, 'US'),
+    (3, 1003, '2026-08-02', 'Home & Living', 120.00, 'VN'),
+    (4, 1004, '2026-08-02', 'Electronics', 990.00, 'SG'),
+    (5, 1005, '2026-08-03', 'Fashion', 45.00, 'VN'),
+    (6, 1006, '2026-08-03', 'Books', 30.00, 'US'),
+    (7, 1007, '2026-08-04', 'Electronics', 320.00, 'JP'),
+    (8, 1008, '2026-08-04', 'Home & Living', 210.00, 'SG');
+
+-- 5. Kiểm tra dữ liệu được phân tán thực tế trên từng Node
 SELECT hostName(), count() FROM analytics.orders_local GROUP BY hostName();
+
+-- 6. Truy vấn tổng hợp trên Bảng Phân Tán (Tự động gom dữ liệu từ 3 node)
+SELECT count() AS total_orders, sum(amount) AS total_amount FROM analytics.orders;
 ```
 
 ---
