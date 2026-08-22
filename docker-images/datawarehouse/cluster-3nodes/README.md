@@ -9,7 +9,8 @@ Hệ thống Data Warehouse phân tán 3 Node kết hợp Business Intelligence 
 - **PostgreSQL 16 & Redis 8**: Metadata và Cache cho Superset trên Node 1.
 
 > [!NOTE]
-> Xem chi tiết tài liệu chuyên sâu: [So Sánh Kiến Trúc ClickHouse vs PostgreSQL & Chiến Lược Mô Hình Hóa Dữ Liệu](../CLICKHOUSE_VS_POSTGRESQL_AND_DATA_MODELING.md) để nắm rõ cơ chế Sharding, Replication, và cách tối ưu hóa bảng trong ClickHouse.
+> - Xem chi tiết tài liệu chuyên sâu: [So Sánh Kiến Trúc ClickHouse vs PostgreSQL & Chiến Lược Mô Hình Hóa Dữ Liệu](../CLICKHOUSE_VS_POSTGRESQL_AND_DATA_MODELING.md) để nắm rõ cơ chế Sharding, Replication, và cách tối ưu hóa bảng trong ClickHouse.
+> - Lộ trình nâng cấp Superset lên Full HA (Patroni + Redis Sentinel): Xem [TODO.md](TODO.md).
 
 ---
 
@@ -18,6 +19,7 @@ Hệ thống Data Warehouse phân tán 3 Node kết hợp Business Intelligence 
 ```text
 docker-images/datawarehouse/cluster-3nodes/
 ├── README.md
+├── TODO.md                               # Kế hoạch mở rộng Full HA cho Apache Superset Stack
 ├── node1/                                # Triển khai trên Node 1 (192.168.56.111)
 │   ├── docker-compose.yml                # ClickHouse + Keeper + HAProxy + Keepalived + Superset Stack
 │   ├── config.d/
