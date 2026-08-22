@@ -255,23 +255,48 @@ sudo ufw reload
 
 ---
 
-## 4. Hướng dẫn Triển khai Từng Node
+## 4. Hướng dẫn Triển khai & Bootstrap Cụm (Deployment & Bootstrapping)
 
-### Bước 1: Khởi động trên Node 1 (Master)
+Bạn có thể lựa chọn triển khai tự động toàn diện qua **Ansible (Khuyên dùng)** hoặc triển khai thủ công bằng **Docker Compose**.
+
+### Cách 1: Tự động hóa bằng Ansible Playbook (Khuyên dùng - 1 Command)
+
+Hệ thống đã được đóng gói sẵn Ansible Role để tự động cài đặt Docker, sinh cấu hình XML/Cfg, phân phối Secret, cấu hình HAProxy & Keepalived và khởi động toàn bộ cụm chỉ bằng 1 lệnh:
+
+#### 1. Bootstrap toàn bộ cụm ClickHouse 3 Node (kèm Keeper, HAProxy, Keepalived):
+```bash
+cd ansible
+ansible-playbook -i inventory/clickhouse/devlocal/hosts.yml playbooks/install-clickhouse-cluster.yml --vault-password-file=.ansible-vault-secret-devlocal
+```
+*(Hoặc chỉ chạy bước sinh cấu hình: `--tags config`, hoặc chỉ khởi động: `--tags deploy`)*
+
+#### 2. Bootstrap cụm Apache Superset Stack trên Node 1 (Superset App + Postgres + Redis):
+```bash
+cd ansible
+ansible-playbook -i inventory/superset/devlocal/hosts.yml playbooks/install-superset.yml --vault-password-file=.ansible-vault-secret-devlocal
+```
+
+---
+
+### Cách 2: Triển khai Thủ công bằng Docker Compose
+
+Nếu muốn khởi động thủ công từng node bằng Docker Compose:
+
+#### Bước 1: Khởi động trên Node 1 (Master)
 Trên máy ảo Node 1 (`192.168.56.111`):
 ```bash
 cd docker-images/datawarehouse/cluster-3nodes/node1
 docker compose up -d --build
 ```
 
-### Bước 2: Khởi động trên Node 2 (Worker 1)
+#### Bước 2: Khởi động trên Node 2 (Worker 1)
 Trên máy ảo Node 2 (`192.168.56.112`):
 ```bash
 cd docker-images/datawarehouse/cluster-3nodes/node2
 docker compose up -d --build
 ```
 
-### Bước 3: Khởi động trên Node 3 (Worker 2)
+#### Bước 3: Khởi động trên Node 3 (Worker 2)
 Trên máy ảo Node 3 (`192.168.56.113`):
 ```bash
 cd docker-images/datawarehouse/cluster-3nodes/node3

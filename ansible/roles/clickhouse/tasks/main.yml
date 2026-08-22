@@ -14,8 +14,8 @@
     - "{{ clickhouse_deploy_dir }}"
     - "{{ clickhouse_deploy_dir }}/config.d"
     - "{{ clickhouse_deploy_dir }}/secrets"
-    - "{{ clickhouse_deploy_dir }}/data"
-    - "{{ clickhouse_deploy_dir }}/logs"
+    - "{{ clickhouse_deploy_dir }}/haproxy"
+    - "{{ clickhouse_deploy_dir }}/keepalived"
   tags: [config]
 
 - name: Generate clickhouse secrets
@@ -45,6 +45,36 @@
     group: root
   tags: [config]
 
+- name: Generate haproxy.cfg configuration
+  template:
+    src: haproxy.cfg.j2
+    dest: "{{ clickhouse_deploy_dir }}/haproxy/haproxy.cfg"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Generate keepalived.conf configuration
+  template:
+    src: keepalived.conf.j2
+    dest: "{{ clickhouse_deploy_dir }}/keepalived/keepalived.conf"
+    mode: "0644"
+    owner: root
+    group: root
+  tags: [config]
+
+- name: Copy keepalived Dockerfile and health check script
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ clickhouse_deploy_dir }}/keepalived/{{ item.dest }}"
+    mode: "{{ item.mode }}"
+    owner: root
+    group: root
+  loop:
+    - { src: "Dockerfile", dest: "Dockerfile", mode: "0644" }
+    - { src: "check_haproxy.sh", dest: "check_haproxy.sh", mode: "0755" }
+  tags: [config]
+
 - name: Generate docker-compose.yml
   template:
     src: docker-compose.yml.j2
@@ -54,9 +84,9 @@
     group: root
   tags: [config]
 
-- name: Deploy ClickHouse Cluster
+- name: Deploy ClickHouse Cluster (with HAProxy & Keepalived)
   shell: |
-    docker compose up -d --force-recreate
+    docker compose up -d --build --force-recreate
   args:
     chdir: "{{ clickhouse_deploy_dir }}"
   register: clickhouse_deploy_result

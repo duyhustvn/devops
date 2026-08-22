@@ -1,0 +1,81 @@
+global
+    # Xuất log trực tiếp ra stdout định dạng raw (tiện theo dõi qua docker logs)
+    log stdout format raw local0
+    # Giới hạn tối đa 4096 kết nối đồng thời cho HAProxy
+    maxconn 4096
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    # Không ghi log với các kết nối rỗng (không gửi dữ liệu) để tránh rác log
+    option  dontlognull
+    # Thử kết nối lại tối đa 3 lần nếu backend bị lỗi trước khi trả về lỗi cho client
+    retries 3
+    # Thời gian chờ tối đa khi thiết lập kết nối tới backend (5 giây)
+    timeout connect 5000ms
+    # Thời gian chờ nhận/gửi dữ liệu phía client và server (300 giây = 5 phút cho truy vấn OLAP nặng)
+    timeout client  300000ms
+    timeout server  300000ms
+
+# ========================================================
+# STATS DASHBOARD (Giao diện Web giám sát trạng thái 3 node)
+# ========================================================
+listen stats
+    bind *:{{ haproxy_stats_port | default(8404) }}
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 5s
+    stats show-legends
+    stats show-node
+
+# ========================================================
+# CLICKHOUSE HTTP LOAD BALANCER (Port {{ haproxy_http_port | default(8124) }} -> {{ clickhouse_http_port | default(8123) }})
+# ========================================================
+# FRONTEND: Điểm tiếp nhận request HTTP từ Client (Apache Superset, Grafana, dbt, HTTP API...)
+# - bind *:{{ haproxy_http_port | default(8124) }}: Lắng nghe trên cổng {{ haproxy_http_port | default(8124) }} của Host / VIP
+# - default_backend: Điều hướng toàn bộ lưu lượng nhận được sang nhóm backend clickhouse_http_back
+frontend clickhouse_http_front
+    bind *:{{ haproxy_http_port | default(8124) }}
+    mode http
+    default_backend clickhouse_http_back
+
+# BACKEND: Nhóm các ClickHouse Server xử lý giao thức HTTP (cổng {{ clickhouse_http_port | default(8123) }})
+# - balance roundrobin: Thuật toán phân phối tải xoay vòng đều giữa các node
+# - option httpchk GET /ping: Cơ chế Health Check chủ động gửi HTTP GET /ping đến ClickHouse
+# - http-check expect status 200: Đánh giá node khỏe mạnh khi nhận về HTTP status 200 OK
+# - check inter 2000ms fall 2 rise 2: Định kỳ check mỗi 2s, fail 2 lần liên tiếp -> DOWN, pass 2 lần -> UP
+backend clickhouse_http_back
+    mode http
+    balance roundrobin
+    option httpchk GET /ping
+    http-check expect status 200
+{% for host in groups['clickhouse'] %}
+    server {{ host }} {{ hostvars[host].node_ip | default(hostvars[host].ansible_host) }}:{{ clickhouse_http_port | default(8123) }} check inter 2000ms fall 2 rise 2
+{% endfor %}
+
+# ========================================================
+# CLICKHOUSE NATIVE TCP LOAD BALANCER (Port {{ haproxy_tcp_port | default(9001) }} -> {{ clickhouse_tcp_port | default(9000) }})
+# ========================================================
+# FRONTEND: Điểm tiếp nhận kết nối Native TCP (clickhouse-client CLI, ETL Pipelines, Python/Go Drivers...)
+# - bind *:{{ haproxy_tcp_port | default(9001) }}: Lắng nghe trên cổng {{ haproxy_tcp_port | default(9001) }} (Layer 4 TCP)
+# - default_backend: Chuyển tiếp kết nối sang nhóm backend clickhouse_tcp_back
+frontend clickhouse_tcp_front
+    bind *:{{ haproxy_tcp_port | default(9001) }}
+    mode tcp
+    default_backend clickhouse_tcp_back
+
+# BACKEND: Nhóm các ClickHouse Server xử lý giao thức Native TCP (cổng {{ clickhouse_tcp_port | default(9000) }})
+# - mode tcp: Truyền tải dữ liệu TCP thô (Layer 4)
+# - balance roundrobin: Cân bằng tải xoay vòng giữa các node
+# - check port {{ clickhouse_http_port | default(8123) }}: Điểm đặc biệt - Dù chuyển tiếp TCP port {{ clickhouse_tcp_port | default(9000) }}, HAProxy vẫn kiểm tra sức khỏe
+#   thông qua HTTP endpoint GET /ping tại port {{ clickhouse_http_port | default(8123) }} để đảm bảo ClickHouse thực sự sẵn sàng
+backend clickhouse_tcp_back
+    mode tcp
+    balance roundrobin
+    option httpchk GET /ping
+    http-check expect status 200
+{% for host in groups['clickhouse'] %}
+    server {{ host }} {{ hostvars[host].node_ip | default(hostvars[host].ansible_host) }}:{{ clickhouse_tcp_port | default(9000) }} check port {{ clickhouse_http_port | default(8123) }} inter 2000ms fall 2 rise 2
+{% endfor %}
