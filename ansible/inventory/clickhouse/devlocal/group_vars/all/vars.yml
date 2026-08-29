@@ -4,3 +4,15 @@ clickhouse_image: 'clickhouse/clickhouse-server:26.4'
 clickhouse_cluster_name: 'dwh_cluster_3node'
 clickhouse_db: 'analytics'
 clickhouse_user: 'dwh_user'
+
+# HAProxy variables
+haproxy_image: 'haproxy:2.8-alpine'
+haproxy_http_port: 8124
+haproxy_tcp_port: 9001
+haproxy_stats_port: 8404
+
+# Keepalived variables
+keepalived_vip: '192.168.56.110'
+keepalived_interface: 'enp0s8'
+keepalived_router_id: 56
+keepalived_auth_pass: 'ChKeeP@110'

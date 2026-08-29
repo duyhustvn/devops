@@ -1,4 +1,22 @@
+networks:
+  dwh-network:
+    name: dwh-network
+    driver: bridge
+
+volumes:
+  clickhouse_data:
+    name: dwh_cluster_clickhouse_data_{{ inventory_hostname }}
+  clickhouse_logs:
+    name: dwh_cluster_clickhouse_logs_{{ inventory_hostname }}
+
+secrets:
+  clickhouse_password:
+    file: ./secrets/clickhouse_password.txt
+
 services:
+  # ========================================================
+  # CLICKHOUSE - Server + Keeper Raft
+  # ========================================================
   clickhouse:
     image: {{ clickhouse_image }}
     container_name: dwh-clickhouse-{{ inventory_hostname }}
@@ -17,10 +35,34 @@ services:
         soft: 262144
         hard: 262144
     volumes:
-      - {{ clickhouse_deploy_dir }}/data:/var/lib/clickhouse
-      - {{ clickhouse_deploy_dir }}/logs:/var/log/clickhouse-server
-      - {{ clickhouse_deploy_dir }}/config.d:/etc/clickhouse-server/config.d:ro
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./config.d:/etc/clickhouse-server/config.d:ro
 
-secrets:
-  clickhouse_password:
-    file: {{ clickhouse_deploy_dir }}/secrets/clickhouse_password.txt
+  # ========================================================
+  # HAPROXY - Load Balancer cho cụm ClickHouse
+  # ========================================================
+  haproxy:
+    image: {{ haproxy_image | default('haproxy:2.8-alpine') }}
+    container_name: dwh-haproxy-{{ inventory_hostname }}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+  # ========================================================
+  # KEEPALIVED - Quản lý VIP {{ keepalived_vip | default('192.168.56.110') }}
+  # ========================================================
+  keepalived:
+    build:
+      context: ./keepalived
+    container_name: dwh-keepalived-{{ inventory_hostname }}
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    volumes:
+      - ./keepalived/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+      - ./keepalived/check_haproxy.sh:/etc/keepalived/check_haproxy.sh:ro

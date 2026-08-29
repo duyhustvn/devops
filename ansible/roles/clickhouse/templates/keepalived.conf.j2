@@ -1,0 +1,43 @@
+global_defs {
+    router_id clickhouse_{{ inventory_hostname }}
+    enable_script_security
+    script_user root
+}
+
+vrrp_script check_haproxy {
+    script "/etc/keepalived/check_haproxy.sh"
+    interval 2
+    weight -20
+    fall 2
+    rise 2
+}
+
+vrrp_instance VI_CLICKHOUSE {
+    state {{ keepalived_state | default('BACKUP') }}
+    interface {{ keepalived_interface | default('enp0s8') }}
+    virtual_router_id {{ keepalived_router_id | default(56) }}
+    priority {{ keepalived_priority | default(100) }}
+    advert_int 1
+
+    unicast_src_ip {{ node_ip | default(ansible_host) }}
+    unicast_peer {
+{% for host in groups['clickhouse'] %}
+{% if host != inventory_hostname %}
+        {{ hostvars[host].node_ip | default(hostvars[host].ansible_host) }}
+{% endif %}
+{% endfor %}
+    }
+
+    authentication {
+        auth_type PASS
+        auth_pass {{ keepalived_auth_pass | default('ChKeeP@110') }}
+    }
+
+    virtual_ipaddress {
+        {{ keepalived_vip | default('192.168.56.110') }}/24 dev {{ keepalived_interface | default('enp0s8') }}
+    }
+
+    track_script {
+        check_haproxy
+    }
+}
