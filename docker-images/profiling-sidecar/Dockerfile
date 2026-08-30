@@ -37,9 +37,16 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         busybox-static \
         linux-tools-generic \
+        linux-tools-common \
         perl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Fix lỗi "perf not found for kernel x.x.x":
+# Thay thế wrapper mặc định của Ubuntu bằng script tự động fallback sang binary perf có sẵn trong container
+COPY perf-wrapper.sh /usr/local/bin/perf
+RUN chmod +x /usr/local/bin/perf \
+    && ln -sf /usr/local/bin/perf /usr/bin/perf
 
 # Copy binaries và scripts từ stage builder
 COPY --from=builder /usr/local/bin/py-spy /usr/local/bin/py-spy
