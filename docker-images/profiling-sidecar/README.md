@@ -167,8 +167,7 @@ perf record -F 99 -p <PID> -g -o /tmp/perf.data -- sleep 30
 * **`-- sleep 30`**: Lệnh thực thi đi kèm để ấn định khoảng thời gian profile đúng 30 giây. Khi `sleep` kết thúc, `perf` sẽ tự động dừng và lưu file.
 
 **Các tùy chọn nâng cao (nếu muốn phân tích chi tiết hơn):**
-* **`-g dwarf`** (thay cho `-g`): Dùng DWARF debug info để giải mã stack trace. Cần thiết khi ứng dụng (Go, Rust, C++) được biên dịch ở chế độ tối ưu hóa hoặc không có Frame Pointer (`-fomit-frame-pointer`). *Lưu ý: File `perf.data` sẽ có dung lượng lớn hơn nhiều.*
-* **`-g fp`**: Dùng Frame Pointer (nhẹ và nhanh, là chế độ mặc định của `-g`, yêu cầu binary build với cờ `-fno-omit-frame-pointer`).
+* **`--call-graph dwarf`** (hoặc `-g --call-graph dwarf`): Dùng bảng gỡ lỗi DWARF để giải mã call stack sâu và chính xác. Cực kỳ cần thiết cho các ứng dụng **Go, Rust, C++** biên dịch tối ưu hóa bị bỏ Frame Pointer (`-fomit-frame-pointer`). *Lưu ý: File `perf.data` sẽ có dung lượng lớn hơn nhiều.*
 * **`-a`** (`--all-cpus`, thay cho `-p <PID>`): Profile toàn bộ hệ thống (tất cả các tiến trình chạy trên mọi CPU core của worker node).
 * **`-e <event>`**: Lọc theo loại sự kiện phần cứng/hệ thống cụ thể (mặc định là `cycles`). Các event phổ biến khác: `-e cpu-clock`, `-e instructions`, `-e cache-misses`, `-e page-faults`.
 
