@@ -227,3 +227,41 @@ Sau khi tải file SVG về máy tính và mở bằng trình duyệt:
 * **Click `Reset Zoom` (góc trên bên trái):** Quay trở lại toàn bộ biểu đồ ban đầu.
 * **Click `Search` (góc trên bên phải):** Nhập tên function/module/thư viện để highlight màu tím nổi bật trên biểu đồ.
 * **Độ rộng của thanh:** Tương ứng với tỉ lệ thời gian chiếm dụng CPU (thanh càng rộng $\rightarrow$ hàm tiêu tốn càng nhiều tài nguyên).
+
+---
+
+## 🔒 Quy trình dọn dẹp sau khi debug để đảm bảo An toàn thông tin (ATTT)
+
+Sau khi hoàn tất quá trình profiling/troubleshooting, cần thực hiện dọn dẹp để tránh rò rỉ dữ liệu nhạy cảm và vi phạm chính sách bảo mật (Security Compliance):
+
+### 1. Dọn dẹp dữ liệu nhạy cảm trong Pod trước khi thoát
+Dữ liệu profiling (`perf.data`, memory dump, stack trace) có thể lưu vết token, mật khẩu hoặc dữ liệu người dùng. Trước khi thoát container debug:
+```bash
+# Xóa toàn bộ file dump/trace tạm thời
+rm -rf /tmp/*.svg /tmp/*.data /tmp/perf.data* /tmp/*.dump
+exit
+```
+
+### 2. Xóa Container Debug / Khôi phục Pod nguyên bản
+
+* **Nếu debug trực tiếp trên Pod thật (Ephemeral Container):**
+  > **Lưu ý K8s:** Ephemeral container không thể xóa riêng lẻ khỏi Pod spec sau khi đã tạo. Khi thoát (`exit`), container chuyển sang trạng thái `Completed`/`Terminated`.
+  > Để xóa hoàn toàn dấu vết container đặc quyền này nhằm tuân thủ audit ATTT:
+  ```bash
+  # Xóa Pod để ReplicaSet tự động sinh Pod mới sạch 100%:
+  kubectl delete pod <POD_NAME> -n <NAMESPACE>
+
+  # Hoặc restart rolling an toàn:
+  kubectl rollout restart deployment/<DEPLOYMENT_NAME> -n <NAMESPACE>
+  ```
+
+* **Nếu debug bằng Pod bản sao (`--copy-to`):**
+  ```bash
+  # Xóa bỏ hoàn toàn Pod clone sau khi debug:
+  kubectl delete pod <POD_NAME>-debug -n <NAMESPACE>
+  ```
+
+### 3. Thu hồi quyền tạm thời (nếu có)
+* Xóa các `PolicyException` (Kyverno/OPA Gatekeeper) đã tạo tạm thời.
+* Đưa nhãn Pod Security của Namespace về mức ban đầu (`baseline` hoặc `restricted`).
+
