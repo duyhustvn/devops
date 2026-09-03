@@ -150,28 +150,80 @@ pgrep -fl python
 
 ---
 
-### 3. Profile toàn hệ thống / Native C/C++ bằng Linux `perf`
+### 3. Profile toàn hệ thống / Native C/C++ / Go / Rust bằng Linux `perf`
 
-* **Ghi nhận CPU profile bằng `perf` trong 30 giây:**
-  ```bash
-  perf record -F 99 -p <PID> -g -- sleep 30
-  ```
+#### 📌 Bước 1: Thu thập dữ liệu Profiling (`perf record`)
 
-* **Render dữ liệu `perf` thành biểu đồ FlameGraph:**
-  ```bash
-  perf script | stackcollapse-perf.pl | flamegraph.pl > /tmp/perf-flamegraph.svg
-  ```
+Chạy lệnh ghi mẫu bên trong shell của container debug:
+```bash
+perf record -F 99 -p <PID> -g -o /tmp/perf.data -- sleep 30
+```
+
+**Giải thích các tùy chọn (Options) cơ bản:**
+* **`-F 99`** (`--freq=99`): Tần số lấy mẫu (Sampling frequency) là 99 lần/giây trên mỗi CPU core. Chọn **99Hz** thay vì 100Hz để tránh lỗi *lockstep sampling* (lấy mẫu trùng nhịp với ngắt đồng hồ hệ thống định kỳ như 100Hz/1000Hz).
+* **`-p <PID>`** (`--pid`): Chỉ định chính xác Process ID của tiến trình ứng dụng cần profile.
+* **`-g`** (`--call-graph`): Kích hoạt thu thập Call Stack Trace (bắt buộc để dựng cây gọi hàm và vẽ FlameGraph).
+* **`-o /tmp/perf.data`**: Đường dẫn file lưu trữ dữ liệu thô nhị phân.
+* **`-- sleep 30`**: Lệnh thực thi đi kèm để ấn định khoảng thời gian profile đúng 30 giây. Khi `sleep` kết thúc, `perf` sẽ tự động dừng và lưu file.
+
+**Các tùy chọn nâng cao (nếu muốn phân tích chi tiết hơn):**
+* **`--call-graph dwarf`** (hoặc `-g --call-graph dwarf`): Dùng bảng gỡ lỗi DWARF để giải mã call stack sâu và chính xác. Cực kỳ cần thiết cho các ứng dụng **Go, Rust, C++** biên dịch tối ưu hóa bị bỏ Frame Pointer (`-fomit-frame-pointer`). *Lưu ý: File `perf.data` sẽ có dung lượng lớn hơn nhiều.*
+* **`-a`** (`--all-cpus`, thay cho `-p <PID>`): Profile toàn bộ hệ thống (tất cả các tiến trình chạy trên mọi CPU core của worker node).
+* **`-e <event>`**: Lọc theo loại sự kiện phần cứng/hệ thống cụ thể (mặc định là `cycles`). Các event phổ biến khác: `-e cpu-clock`, `-e instructions`, `-e cache-misses`, `-e page-faults`.
 
 ---
 
-## 📥 Tải file FlameGraph `.svg` về máy tính
+#### 📌 Bước 2: Xử lý dữ liệu & Xuất kết quả (Chọn 1 trong 2 cách)
 
-Từ máy cá nhân (local terminal), chạy lệnh copy file SVG từ pod về để mở trên trình duyệt (Chrome, Firefox):
+Sau khi có file `/tmp/perf.data`, chọn 1 trong 2 cách xuất kết quả dưới đây:
 
-```bash
-# Đối với Ephemeral Debug Container
-kubectl cp <NAMESPACE>/<POD_NAME>:/tmp/python-flamegraph.svg ./python-flamegraph.svg -c debugger-xxxxx
+##### 🌟 Cách A: Render trực tiếp file `.svg` trong Pod rồi copy về máy (Khuyên dùng)
+> *Ưu điểm:* Container có sẵn Symbol Tables của tiến trình nên phân giải tên hàm chính xác nhất; file `.svg` sinh ra rất nhẹ (< 1MB), dễ copy và xem ngay trên mọi trình duyệt.
 
-# Đối với Sidecar Container
-kubectl cp <NAMESPACE>/<POD_NAME>:/tmp/python-flamegraph.svg ./python-flamegraph.svg -c profiling-sidecar
-```
+1. **Chuyển đổi dữ liệu và vẽ FlameGraph ngay trong Pod:**
+   ```bash
+   perf script -i /tmp/perf.data | stackcollapse-perf.pl | flamegraph.pl --title="CPU FlameGraph" > /tmp/perf-flamegraph.svg
+   ```
+   * **`perf script`**: Giải mã file nhị phân `perf.data` thành danh sách stack trace dạng văn bản (text).
+   * **`stackcollapse-perf.pl`**: Gom nhóm (aggregate) các call stack trùng lặp thành định dạng 1 dòng (`func_a;func_b 120`).
+   * **`flamegraph.pl`**: Đọc dữ liệu đã gom nhóm và sinh biểu đồ tương tác SVG.
+
+2. **Copy file `.svg` về máy tính cá nhân (chạy từ terminal máy local):**
+   ```bash
+   # Nếu dùng Ephemeral Debug Container (kubectl debug):
+   kubectl cp <NAMESPACE>/<POD_NAME>:/tmp/perf-flamegraph.svg ./perf-flamegraph.svg -c <DEBUGGER_CONTAINER_NAME>
+
+   # Nếu dùng Sidecar Container:
+   kubectl cp <NAMESPACE>/<POD_NAME>:/tmp/perf-flamegraph.svg ./perf-flamegraph.svg -c profiling-sidecar
+   ```
+
+3. **Mở xem biểu đồ:** Click đúp mở file `perf-flamegraph.svg` bằng trình duyệt web (Google Chrome, Firefox, Edge).
+
+---
+
+##### 💻 Cách B: Copy file thô `perf.data` về máy tính để phân tích chuyên sâu
+> *Ưu điểm:* Giúp xem trực tiếp giao diện tương tác dòng lệnh `perf report` (TUI) trên máy cá nhân hoặc mở rộng phân tích bằng các công cụ local.
+
+1. **Copy file `perf.data` về máy tính cá nhân (chạy từ terminal máy local):**
+   ```bash
+   kubectl cp <NAMESPACE>/<POD_NAME>:/tmp/perf.data ./perf.data -c <CONTAINER_NAME>
+   ```
+
+2. **Phân tích trên máy cá nhân (yêu cầu máy local có cài `perf`):**
+   ```bash
+   # Xem báo cáo tương tác TUI (dùng phím mũi tên duyệt hàm):
+   perf report -i ./perf.data
+
+   # Hoặc tự render FlameGraph trên máy local:
+   perf script -i ./perf.data | stackcollapse-perf.pl | flamegraph.pl > local-flamegraph.svg
+   ```
+
+---
+
+## 📥 Mẹo thao tác và tương tác với file FlameGraph `.svg`
+
+Sau khi tải file SVG về máy tính và mở bằng trình duyệt:
+* **Click vào một hàm:** Phóng to (zoom) sâu vào call stack của nhánh hàm đó.
+* **Click `Reset Zoom` (góc trên bên trái):** Quay trở lại toàn bộ biểu đồ ban đầu.
+* **Click `Search` (góc trên bên phải):** Nhập tên function/module/thư viện để highlight màu tím nổi bật trên biểu đồ.
+* **Độ rộng của thanh:** Tương ứng với tỉ lệ thời gian chiếm dụng CPU (thanh càng rộng $\rightarrow$ hàm tiêu tốn càng nhiều tài nguyên).

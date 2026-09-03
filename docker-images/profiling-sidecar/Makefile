@@ -1,5 +1,5 @@
 IMG_NAME ?= profiling-sidecar
-IMG_TAG ?= latest
+IMG_TAG ?= v1.0.0
 
 CONTAINER_REGISTRY ?= docker.io
 DOCKER_USER ?= duyle95
