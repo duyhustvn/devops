@@ -274,50 +274,6 @@ trusted_servers: '192.168.1.1'
 | `pgpool_pcp_port` | `9898` | PCP port để health check query watchdog status |
 | `pgpool_pcp_user` | `pgpool` | PCP user |
 
----
-
-## Khuyến nghị cho ứng dụng SQLAlchemy (Dify, Flask, FastAPI, …)
-
-Phần này tổng hợp các lưu ý khi triển khai ứng dụng dùng SQLAlchemy (như **Dify**) kết nối tới cụm PostgreSQL HA qua Pgpool.
-
-### Alembic migration — BẮT BUỘC bypass pgpool
-
-Alembic chạy schema migration (`flask db upgrade`) và gặp các vấn đề sau nếu đi qua Pgpool:
-
-1. **Load balancing route nhầm standby**: Pgpool có thể phân loại câu `SELECT` của Alembic là read-only và đẩy sang standby — dẫn đến đọc schema cũ hoặc fail khi DDL phụ thuộc.
-2. **Advisory lock anti-concurrent-migration**: Alembic dùng `pg_advisory_lock` để chống 2 instance cùng migrate đồng thời.
-3. **Timeout**: Migration tạo index trên bảng lớn có thể chạy lâu, vượt timeout cấu hình trên Pgpool.
-
-**Cách triển khai** — tách migration thành job riêng trỏ thẳng PostgreSQL primary trên `:{{ pg_port }}`:
-
-```yaml
-# Ví dụ k8s / docker-compose — migration job
-dify_migration:
-  image: langgenius/dify-api:1.12.1
-  command: ["flask", "db", "upgrade"]
-  env:
-    DB_HOST: node-db-01     # primary trực tiếp (KHÔNG dùng VIP)
-    DB_PORT: 5432           # PostgreSQL trực tiếp (KHÔNG qua pgpool)
-    DB_DATABASE: dify
-    DB_USERNAME: dify
-    DB_PASSWORD: ${DIFY_DB_PASSWORD}
-
-# Runtime của Dify api/worker — vẫn qua VIP của pgpool
-dify_api:
-  env:
-    DB_HOST: 192.168.1.100  # VIP
-    DB_PORT: 9999           # pgpool
-    DB_DATABASE: dify
-    DB_USERNAME: dify
-    DB_PASSWORD: ${DIFY_DB_PASSWORD}
-```
-
-> Nhớ thêm rule `pg_hba.conf` (hoặc inventory) cho phép user migration kết nối từ host chạy migration job trực tiếp tới PostgreSQL primary trên `:5432`.
-
-### Lưu ý SQLAlchemy engine config
-
-- Bật `pool_pre_ping=True` để SQLAlchemy detect connection chết (do pgpool restart hoặc failover) và mở lại trong suốt.
-- Mặc định `READ COMMITTED` của PostgreSQL đủ cho hầu hết workflow của Dify.
 
 ---
 
