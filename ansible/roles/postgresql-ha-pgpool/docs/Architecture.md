@@ -1,6 +1,6 @@
 # Kiến trúc High Availability — PostgreSQL + pgpool-II
 
-Tài liệu liên quan: [Runbook vận hành](Operations.md), [Pgpool hooks](Pgpool%20Hooks.md)
+Tài liệu liên quan: [Pgpool hooks](Pgpool%20Hooks.md), [Storage and Cleanup](Storage%20and%20Cleanup.md), [Change Data Directory](Change%20Data%20Directory.md)
 
 ## Tổng quan
 
