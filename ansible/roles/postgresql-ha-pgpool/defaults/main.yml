@@ -15,7 +15,7 @@ pg_data_dir: /u01/data/postgresql/{{ postgresql_version }}/main
 pg_config_dir: /etc/postgresql/{{ postgresql_version }}/main
 pg_home_dir: /var/lib/postgresql
 pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
-pg_conf_max_connection: 2000
+pg_conf_max_connection: 1000
 # 0 disables PostgreSQL's idle-in-transaction session cleanup.
 pg_conf_idle_in_transaction_session_timeout: 0
 # systemd service limits. systemd services không dùng /etc/security/limits.d.
@@ -36,8 +36,8 @@ pgpool_conf_preview_path: /tmp/pgpool.conf.preview
 arping_path: /usr/bin
 if_cmd_path: /sbin
 
-pgpool_conf_num_init_children: 2000
-pgpool_conf_max_pool: 1
+pgpool_conf_num_init_children: 500
+pgpool_conf_max_pool: 2
 
 # Nếu on thì các câu read sẽ được chia về replica
 # Nếu off thì gửi tất cả câu query về master  
