@@ -1,10 +1,10 @@
-# Kiến trúc High Availability — PostgreSQL + pgpool-II + pgbouncer
+# Kiến trúc High Availability — PostgreSQL + pgpool-II
 
 Tài liệu liên quan: [Runbook vận hành](Operations.md), [Pgpool hooks](Pgpool%20Hooks.md)
 
 ## Tổng quan
 
-Cụm bao gồm 3 node chạy song song PostgreSQL, pgbouncer và pgpool-II trên cùng máy. pgpool-II đóng vai trò proxy và load balancer ở lớp ngoài, pgbouncer là connection pooler trung gian tới PostgreSQL local trên mỗi node, đồng thời pgpool điều phối tự động failover khi node PostgreSQL primary bị sự cố.
+Cụm bao gồm 3 node chạy song song PostgreSQL và pgpool-II trên cùng máy. pgpool-II đóng vai trò proxy, load balancer và connection pooler ở lớp ngoài, đồng thời pgpool điều phối tự động failover khi node PostgreSQL primary bị sự cố.
 
 ```
                         ┌─────────────────┐
@@ -22,8 +22,6 @@ Cụm bao gồm 3 node chạy song song PostgreSQL, pgbouncer và pgpool-II trê
  │  pgpool-II:9999 │   │  pgpool-II:9999 │   │  pgpool-II:9999 │
  │  (watchdog)     │◄──►  (watchdog)     │◄──►  (watchdog)     │
  │       │         │   │       │         │   │       │         │
- │  pgbouncer:6432 │   │  pgbouncer:6432 │   │  pgbouncer:6432 │
- │       │         │   │       │         │   │       │         │
  │  PostgreSQL:5432│   │  PostgreSQL:5432│   │  PostgreSQL:5432│
  │  PRIMARY        │──►│  STANDBY        │──►│  STANDBY        │
  └─────────────────┘   └─────────────────┘   └─────────────────┘
@@ -32,14 +30,12 @@ Cụm bao gồm 3 node chạy song song PostgreSQL, pgbouncer và pgpool-II trê
 
 **Luồng kết nối client:**
 1. Client → VIP:9999 (pgpool leader)
-2. Nếu `pgbouncer_enabled: true`, pgpool định tuyến query → `pgbouncer` trên node backend được chọn (`backend_portN = 6432`)
-3. Nếu `pgbouncer_enabled: false`, pgpool bỏ qua pgbouncer và kết nối trực tiếp PostgreSQL (`backend_portN = 5432`)
-4. Khi dùng pgbouncer, pgbouncer multiplex kết nối → PostgreSQL local `127.0.0.1:5432`
+2. Pgpool định tuyến query trực tiếp tới PostgreSQL trên node backend được chọn (`backend_portN = 5432`)
 
-**Luồng kết nối nội bộ (replication / pgpool admin) — KHÔNG đi qua pgbouncer:**
-- `pg_basebackup`, `pg_rewind`, `primary_conninfo` của streaming replication: kết nối thẳng `PostgreSQL:5432` vì pgbouncer không hỗ trợ replication protocol.
-- Health check / `sr_check` của pgpool: đi qua pgbouncer (SQL thường).
-- Các script `failover.sh`, `follow_primary.sh`, `recovery_1st_stage`: hardcode dùng `PG_PORT={{ pg_port }}` cho mọi thao tác admin trực tiếp PostgreSQL.
+**Luồng kết nối nội bộ (replication / pgpool admin):**
+- `pg_basebackup`, `pg_rewind`, `primary_conninfo` của streaming replication: kết nối thẳng `PostgreSQL:5432`.
+- Health check / `sr_check` của pgpool: kết nối thẳng PostgreSQL.
+- Các script `failover.sh`, `follow_primary.sh`, `recovery_1st_stage`: dùng `PG_PORT={{ pg_port }}` cho mọi thao tác admin trực tiếp PostgreSQL.
 
 ---
 
@@ -58,24 +54,11 @@ Mỗi node chạy một tiến trình pgpool-II độc lập với các chức n
 
 | Chức năng | Mô tả |
 |-----------|-------|
-| Connection pooling | Pool kết nối tới `pgbouncer` của các node backend |
+| Connection pooling | Pool kết nối tới PostgreSQL của các node backend |
 | Load balancing | Phân phối query SELECT sang các standby |
-| Health check | Kiểm tra định kỳ backend (qua pgbouncer) còn sống không |
+| Health check | Kiểm tra định kỳ backend PostgreSQL còn sống không |
 | Failover | Trigger `failover.sh` khi phát hiện primary down |
 | Online recovery | Tự động khôi phục standby bằng `recovery_1st_stage` |
-
-### PgBouncer
-
-Mỗi node chạy thêm một tiến trình pgbouncer lắng nghe trên cổng `{{ pgbouncer_port }}` (mặc định 6432) và forward tới PostgreSQL local `127.0.0.1:{{ pg_port }}`. Vai trò:
-
-| Chức năng | Mô tả |
-|-----------|-------|
-| Multiplex kết nối | Gom nhiều kết nối từ pgpool về ít kết nối PostgreSQL hơn |
-| Giảm overhead fork backend | PostgreSQL fork 1 process / connection; pgbouncer giảm tải |
-| Pool mode | Mặc định role dùng `transaction`; đổi về `session` nếu workload phụ thuộc session-state |
-| Auth | scram-sha-256 với `auth_user = pgbouncer`, `auth_dbname = postgres` và `auth_query` tra cứu `pg_shadow` qua function `public.pgbouncer_get_auth()` |
-
-> **Lưu ý quan trọng:** pgbouncer KHÔNG hỗ trợ PostgreSQL streaming replication protocol. Mọi thao tác `pg_basebackup`, `pg_rewind`, `primary_conninfo` đều bypass pgbouncer và kết nối thẳng PostgreSQL `:{{ pg_port }}`. Điều này đã được hardcode trong các script `failover.sh`, `follow_primary.sh`, `recovery_1st_stage` qua biến `PG_PORT`.
 
 ### pgpool Watchdog
 
@@ -271,39 +254,12 @@ trusted_servers: '192.168.1.1'
 | `arping_path` | `/usr/bin` | Đường dẫn đến `arping` |
 | `if_cmd_path` | `/sbin` | Đường dẫn đến `ip` command |
 
-### Biến PgBouncer
-
-| Biến | Mặc định | Mô tả |
-|------|----------|-------|
-| `pg_port` | `5432` | Cổng PostgreSQL thực; dùng trực tiếp trong các script khi cần bypass pgbouncer |
-| `pgbouncer_enabled` | `true` | Bật/tắt lớp pgbouncer. `true`: pgpool trỏ backend tới `pgbouncer_port`; `false`: pgpool trỏ backend trực tiếp tới `pg_port` |
-| `pgbouncer_port` | `6432` | Cổng pgbouncer trên mỗi node — chỉ dùng làm backend port của pgpool khi `pgbouncer_enabled: true` |
-| `pgbouncer_listen_addr` | `*` | Địa chỉ pgbouncer lắng nghe |
-| `pgbouncer_pool_mode` | `transaction` | `session` / `transaction` / `statement`. Đổi về `session` nếu workload phụ thuộc session-state |
-| `pgbouncer_max_client_conn` | `1000` | Số client connection tối đa pgbouncer chấp nhận |
-| `pgbouncer_default_pool_size` | `900` | Số server connection / (user, db) |
-| `pgbouncer_min_pool_size` | `0` | Số server connection idle giữ sẵn |
-| `pgbouncer_reserve_pool_size` | `5` | Pool dự phòng khi nghẽn |
-| `pgbouncer_reserve_pool_timeout` | `5` | Giây chờ trước khi cấp connection từ reserve pool |
-| `pgbouncer_server_idle_timeout` | `600` | Giây trước khi đóng server connection idle |
-| `pgbouncer_backend_connection_margin` | `10` | Số connection PostgreSQL chừa lại cho superuser/replication/admin khi validate pool size |
-| `pgbouncer_limit_nofile` | `65536` | `LimitNOFILE` của `pgbouncer.service`; đặt đủ cao cho client socket và server socket dự kiến |
-| `pgbouncer_max_prepared_statements` | `0` | Ảo hoá prepared statements (pgbouncer ≥ 1.21). Bắt buộc > 0 nếu chạy `transaction` mode với driver có server-side prepares (psycopg3, JDBC, asyncpg…). |
-| `pgbouncer_auth_user` | `pgbouncer` | Role PostgreSQL dùng cho `auth_query` |
-| `pgbouncer_auth_type` | `scram-sha-256` | Phương thức auth client → pgbouncer |
-| `pgbouncer_auth_query` | `SELECT usename, passwd FROM public.pgbouncer_get_auth($1)` | Câu query lookup credentials |
-| `pgbouncer_auth_dbname` | `postgres` | Database dùng để chạy `auth_query`; tránh implicit lookup trong reserved database `pgbouncer` |
-| `pgbouncer_auth_password` | `{{ pgbouncer_pass }}` | Plaintext password chỉ cho role nội bộ `pgbouncer` trong `userlist.txt`; không chứa password app users |
-| `pgbouncer_pass` | — | Mật khẩu của role `pgbouncer` trong PostgreSQL (đặt trong vault) |
-| `pgbouncer_databases` | (mọi DB → `127.0.0.1:{{ pg_port }}`) | Danh sách `[databases]` của pgbouncer.ini |
-
 ### Biến systemd service limits
 
 | Biến | Mặc định | Mô tả |
 |------|----------|-------|
 | `postgresql_limit_nofile` | `65536` | `LimitNOFILE` cho `postgresql@{{ postgresql_version }}-main.service` |
 | `pgpool_limit_nofile` | `65536` | `LimitNOFILE` cho `pgpool2.service` |
-| `pgbouncer_limit_nofile` | `65536` | `LimitNOFILE` cho `pgbouncer.service` |
 
 ### Biến riêng cho `vip_manager: keepalived`
 
@@ -322,66 +278,15 @@ trusted_servers: '192.168.1.1'
 
 ## Khuyến nghị cho ứng dụng SQLAlchemy (Dify, Flask, FastAPI, …)
 
-Phần này tổng hợp các tinh chỉnh đã được kiểm chứng cho stack SQLAlchemy + psycopg2/psycopg3. Ví dụ minh hoạ dùng **Dify 1.12.1** (Flask + SQLAlchemy 2 + Alembic + Celery + Redis).
+Phần này tổng hợp các lưu ý khi triển khai ứng dụng dùng SQLAlchemy (như **Dify**) kết nối tới cụm PostgreSQL HA qua Pgpool.
 
-### Vì sao Dify an toàn ở `transaction` mode
+### Alembic migration — BẮT BUỘC bypass pgpool
 
-| Yếu tố session-state có thể vỡ trong transaction mode | Dify 1.12.1 |
-|---|---|
-| `LISTEN` / `NOTIFY` (pub/sub PostgreSQL) | Không dùng — pub/sub đi qua Redis |
-| Advisory lock cross-transaction | Không dùng ở runtime (chỉ Alembic dùng khi migration) |
-| Temp table cross-transaction | Không dùng |
-| `WITH HOLD` cursor | Không dùng |
-| Server-side prepared statements | Không — `psycopg2` mặc định không prepare |
-| Session-level `SET` (search_path, isolation level…) | Không set ở engine level |
+Alembic chạy schema migration (`flask db upgrade`) và gặp các vấn đề sau nếu đi qua Pgpool:
 
-→ `pgbouncer_pool_mode: transaction` là an toàn và cho throughput cao hơn rõ rệt.
-
-### Override trong inventory cho cluster Dify
-
-```yaml
-# group_vars/<dify_db_group>/main.yml
-pgbouncer_pool_mode: transaction
-pgbouncer_default_pool_size: 30          # connection/(user,db)/node tới PostgreSQL
-pgbouncer_max_client_conn: 500           # tổng client từ pgpool + ad-hoc tools
-# Bật ảo hoá prepared statements để bảo hiểm khi nâng cấp psycopg3 / thêm
-# service Java/Go khác trong tương lai (yêu cầu pgbouncer >= 1.21).
-pgbouncer_max_prepared_statements: 200
-```
-
-Quy tắc validate sizing trên mỗi PostgreSQL node:
-
-```text
-pgbouncer_default_pool_size + pgbouncer_reserve_pool_size
-  ≤ pg_conf_max_connection - pgbouncer_backend_connection_margin
-```
-
-Không đặt `pgbouncer_default_pool_size` theo tổng client. Tổng client vào PgBouncer nằm ở `pgbouncer_max_client_conn`; `default_pool_size` là số server connection tới PostgreSQL cho từng cặp `(user,database)`. Nếu tăng pool size lên mức cao, cần tăng `pg_conf_max_connection` tương ứng hoặc khai báo pool size riêng theo từng database.
-
-Ví dụ `dify` có 1000 client vào database `dify`, còn `dify_plugin` chỉ có 2-3 connection:
-
-```yaml
-pgbouncer_max_client_conn: 1000
-pgbouncer_default_pool_size: 180
-```
-
-Với `pg_conf_max_connection: 200`, pool server connection phải chừa lại margin:
-
-```text
-pgbouncer_default_pool_size + pgbouncer_reserve_pool_size
-  ≤ 200 - pgbouncer_backend_connection_margin
-```
-
-`pgbouncer_max_client_conn: 1000` là nơi cho phép 1000 client vào PgBouncer; không cần đặt `pgbouncer_default_pool_size: 1000`.
-
-### Alembic migration — BẮT BUỘC bypass pgpool & pgbouncer
-
-Alembic chạy schema migration (`flask db upgrade`) và gặp các vấn đề sau nếu đi qua pool:
-
-1. **DDL không-transaction**: `CREATE INDEX CONCURRENTLY`, `VACUUM`, `ALTER TYPE … ADD VALUE` (PG < 12) báo lỗi `cannot run inside a transaction block` khi bị pgbouncer wrap.
-2. **Advisory lock anti-concurrent-migration**: Alembic `SELECT pg_advisory_lock(2147483647)` để chống 2 instance cùng migrate. Lock này thuộc session — bị mất khi pgbouncer xoay connection.
-3. **Load balancing route nhầm standby**: pgpool có thể tưởng `SELECT` của Alembic là read-only và đẩy sang standby — DDL fail hoặc đọc schema cũ.
-4. **Timeout middle layer**: migration tạo index trên bảng lớn có thể chạy hàng chục phút — vượt health check timeout của pgpool/pgbouncer.
+1. **Load balancing route nhầm standby**: Pgpool có thể phân loại câu `SELECT` của Alembic là read-only và đẩy sang standby — dẫn đến đọc schema cũ hoặc fail khi DDL phụ thuộc.
+2. **Advisory lock anti-concurrent-migration**: Alembic dùng `pg_advisory_lock` để chống 2 instance cùng migrate đồng thời.
+3. **Timeout**: Migration tạo index trên bảng lớn có thể chạy lâu, vượt timeout cấu hình trên Pgpool.
 
 **Cách triển khai** — tách migration thành job riêng trỏ thẳng PostgreSQL primary trên `:{{ pg_port }}`:
 
@@ -392,7 +297,7 @@ dify_migration:
   command: ["flask", "db", "upgrade"]
   env:
     DB_HOST: node-db-01     # primary trực tiếp (KHÔNG dùng VIP)
-    DB_PORT: 5432           # PostgreSQL trực tiếp (KHÔNG qua pgpool/pgbouncer)
+    DB_PORT: 5432           # PostgreSQL trực tiếp (KHÔNG qua pgpool)
     DB_DATABASE: dify
     DB_USERNAME: dify
     DB_PASSWORD: ${DIFY_DB_PASSWORD}
@@ -411,8 +316,7 @@ dify_api:
 
 ### Lưu ý SQLAlchemy engine config
 
-- Tránh đặt `isolation_level` ở engine level (sẽ phát `SET SESSION CHARACTERISTICS …` — mất khi đổi connection ở transaction mode). Nếu cần, dùng `engine.execution_options(isolation_level=...)` theo từng checkout.
-- Bật `pool_pre_ping=True` để SQLAlchemy detect connection chết (do pgbouncer/pgpool restart) và mở lại trong suốt.
+- Bật `pool_pre_ping=True` để SQLAlchemy detect connection chết (do pgpool restart hoặc failover) và mở lại trong suốt.
 - Mặc định `READ COMMITTED` của PostgreSQL đủ cho hầu hết workflow của Dify.
 
 ---

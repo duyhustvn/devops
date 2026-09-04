@@ -31,9 +31,7 @@ NEW_MAIN_NODE_PGDATA="${10}"
 OLD_PRIMARY_NODE_HOST="${11}"
 OLD_PRIMARY_NODE_PORT="${12}"
 
-# Các thao tác trực tiếp với PostgreSQL (drop replication slot, pg_rewind,
-# pg_basebackup) luôn dùng PG_PORT. Khi bật pgbouncer, backend port pgpool nhận
-# được là pgbouncer port, không dùng được cho streaming replication/admin.
+# Các thao tác trực tiếp với PostgreSQL (drop replication slot, pg_rewind, pg_basebackup) luôn dùng PG_PORT.
 PG_PORT={{ pg_port }}
 PGHOME={{ pg_lib_dir }}
 REPL_SLOT_NAME=$(echo ${FAILED_NODE_HOST,,} | tr -- -. _)

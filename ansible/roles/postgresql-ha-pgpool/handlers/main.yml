@@ -33,14 +33,3 @@
     name: keepalived
     state: restarted
 
-- name: Restart PgBouncer
-  become: true
-  systemd:
-    name: pgbouncer
-    state: restarted
-
-- name: Reload PgBouncer
-  become: true
-  systemd:
-    name: pgbouncer
-    state: reloaded

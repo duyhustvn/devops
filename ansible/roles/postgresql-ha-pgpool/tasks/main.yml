@@ -25,12 +25,6 @@
   tags: [ install_pgpool2, rc_all ]
 
 - block:
-    - name: Install PgBouncer
-      include_tasks: install/install_pgbouncer_debian.yml
-      when: pgbouncer_enabled | bool
-  tags: [ install_pgbouncer, rc_all ]
-
-- block:
     - name: Configure local hosts entries
       include_tasks: config_hosts.yml
   tags: [ config_hosts, rc_all ]
@@ -43,11 +37,8 @@
 - block:
     - name: Detect PostgreSQL primary
       include_tasks: psql/detect_primary.yml
-  tags: [ detect_primary, config_psql, config_pgbouncer, config_pgpool, rc_all ]
+  tags: [ detect_primary, config_psql, config_pgpool, rc_all ]
 
-  # config_psql phải chạy trước config_pgbouncer khi bật pgbouncer vì cần:
-  #   - user pgbouncer được tạo trong PostgreSQL (config_psql_user)
-  #   - pg_hba cho phép pgbouncer kết nối
 - block:
     - name: Config PostgreSQL
       include_tasks: psql/config_psql.yml
@@ -57,14 +48,6 @@
     - name: Preview PostgreSQL config
       include_tasks: psql/preview_postgresql_conf.yml
   tags: [ preview_postgresql_conf ]
-
-  # config_pgbouncer phải chạy trước config_pgpool vì pgpool sẽ trỏ backend
-  # tới pgbouncer port nếu pgbouncer_enabled = true.
-- block:
-    - name: Config PgBouncer
-      include_tasks: pgbouncer/config_pgbouncer.yml
-      when: pgbouncer_enabled | bool
-  tags: [ config_pgbouncer, rc_all ]
 
 - block:
     - name: Config pgpool

@@ -51,7 +51,7 @@ Các tham số `%` là giá trị runtime do Pgpool truyền vào:
 | `%N` | Hostname/IP của old primary |
 | `%S` | Port của old primary |
 
-Trong role này, khi `pgbouncer_enabled: true`, `%p`, `%r`, `%S` có thể là port PgBouncer (`6432`) vì Pgpool backend trỏ qua PgBouncer. Các script vẫn luôn dùng `PG_PORT={{ pg_port }}` cho thao tác replication/admin trực tiếp PostgreSQL như `pg_ctl promote`, `pg_rewind`, `pg_basebackup`, tạo/drop replication slot và `primary_conninfo`. Đây là điểm quan trọng vì PgBouncer không hỗ trợ PostgreSQL streaming replication protocol.
+Trong role này, các script luôn dùng `PG_PORT={{ pg_port }}` cho thao tác replication/admin trực tiếp PostgreSQL như `pg_ctl promote`, `pg_rewind`, `pg_basebackup`, tạo/drop replication slot và `primary_conninfo`.
 
 ## `failover.sh.j2`
 
@@ -203,7 +203,7 @@ Kiểm tra watchdog leader:
 pcp_watchdog_info -h 127.0.0.1 -p 9898 -U pgpool
 ```
 
-Kiểm tra replication trực tiếp PostgreSQL, bỏ qua Pgpool/PgBouncer:
+Kiểm tra replication trực tiếp PostgreSQL:
 
 ```bash
 PGPASSWORD='<postgres_pass>' psql -h <primary-ip> -p 5432 -U postgres -d postgres -c "select application_name, client_addr, state from pg_stat_replication"
@@ -218,5 +218,4 @@ Các lỗi hay gặp:
 | `pg_rewind` fail | Standby không có WAL/timeline phù hợp, hoặc old primary diverged quá xa | Rebuild bằng online recovery thay vì attach |
 | Replication slot inactive giữ WAL | Node standby down lâu hoặc script drop slot fail | Xem `pg_replication_slots`, drop slot thừa sau khi chắc chắn node không còn dùng |
 | VIP không chuyển trong watchdog mode | `trusted_servers`, sudo `ip`/`arping`, interface hoặc SSH escalation lỗi | Xem `pcp_watchdog_info`, `ip addr`, `/var/log/pgpool.log` |
-| Hook dùng nhầm port PgBouncer | Script tự sửa không dùng `PG_PORT={{ pg_port }}` | Replication/admin phải luôn đi thẳng PostgreSQL `:5432` |
 
