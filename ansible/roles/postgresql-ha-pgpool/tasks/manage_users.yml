@@ -1,0 +1,143 @@
+---
+- name: Check if there are application users configured
+  debug:
+    msg: "Không có user nào được khai báo trong pg_allowed_user_db. Bỏ qua tác vụ quản lý user."
+  when: pg_allowed_user_db | default([]) | length == 0
+
+- block:
+    - name: Set facts for unique users and databases
+      set_fact:
+        app_unique_users: "{{ pg_allowed_user_db | map(attribute='user') | map('trim') | unique | list }}"
+        app_unique_dbs: "{{ pg_allowed_user_db | map(attribute='db') | map('trim') | unique | list }}"
+
+    - name: Validate that passwords are defined for all users
+      assert:
+        that:
+          - lookup('vars', (item | trim) + '_pass', default='') | length > 0
+        fail_msg: "Chưa cấu hình mật khẩu cho user '{{ item }}'. Vui lòng định nghĩa biến '{{ item }}_pass' trong vault.yml!"
+      loop: "{{ app_unique_users }}"
+      run_once: true
+
+    - name: Detect PostgreSQL primary
+      include_tasks: psql/detect_primary.yml
+
+    # =========================================================================
+    # 1. Quản lý Database, Role và Quyền trên Node PRIMARY
+    #    (Dữ liệu và quyền sẽ tự động được streaming replication đồng bộ sang Standby)
+    # =========================================================================
+    - block:
+        - name: Ensure application databases exist on primary
+          shell: |
+            run_psql() {
+              PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" -tAc "$@" \
+                || sudo -u postgres psql -d postgres -tAc "$@"
+            }
+            EXISTS=$(run_psql "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'")
+            if [ "$EXISTS" != "1" ]; then
+              run_psql -v ON_ERROR_STOP=1 "CREATE DATABASE \"$DB_NAME\" OWNER postgres ENCODING 'UTF8'"
+              echo "CREATED"
+            else
+              echo "EXISTS"
+            fi
+          environment:
+            DB_NAME: "{{ item }}"
+          loop: "{{ app_unique_dbs }}"
+          register: db_create_res
+          changed_when: "'CREATED' in db_create_res.stdout"
+
+        - name: Ensure application roles exist and passwords are synchronized
+          shell: |
+            run_psql() {
+              PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=postgres connect_timeout=5" -tAc "$@" \
+                || sudo -u postgres psql -d postgres -tAc "$@"
+            }
+            EXISTS=$(run_psql "SELECT 1 FROM pg_roles WHERE rolname = '$APP_USER'")
+            if [ "$EXISTS" != "1" ]; then
+              run_psql -v ON_ERROR_STOP=1 "CREATE ROLE \"$APP_USER\" WITH LOGIN PASSWORD '$APP_PASS'"
+              echo "CREATED"
+            else
+              run_psql -v ON_ERROR_STOP=1 "ALTER ROLE \"$APP_USER\" WITH PASSWORD '$APP_PASS'"
+              echo "UPDATED"
+            fi
+          environment:
+            APP_USER: "{{ item }}"
+            APP_PASS: "{{ lookup('vars', item + '_pass') }}"
+          loop: "{{ app_unique_users }}"
+          register: role_create_res
+          changed_when: "'CREATED' in role_create_res.stdout"
+          no_log: true
+
+        - name: Grant privileges on databases, schemas, tables and sequences
+          shell: |
+            run_psql() {
+              PGPASSWORD='{{ postgres_pass }}' psql "host=localhost port={{ pg_port }} user=postgres dbname=$DB_NAME connect_timeout=5" -v ON_ERROR_STOP=1 "$@" \
+                || sudo -u postgres psql -d "$DB_NAME" -v ON_ERROR_STOP=1 "$@"
+            }
+
+            # Quyền trên schema public: nếu quyền bảng có INSERT/ALL thì cấp thêm CREATE (cần cho migrations), ngược lại chỉ USAGE
+            if [[ "$TABLE_PRIVILEGE" == *"INSERT"* ]] || [[ "$TABLE_PRIVILEGE" == *"ALL"* ]]; then
+              SCHEMA_PRIV="USAGE, CREATE"
+            else
+              SCHEMA_PRIV="USAGE"
+            fi
+
+            run_psql <<EOF
+            GRANT CONNECT ON DATABASE "$DB_NAME" TO "$APP_USER";
+            GRANT $SCHEMA_PRIV ON SCHEMA public TO "$APP_USER";
+            GRANT $TABLE_PRIVILEGE ON ALL TABLES IN SCHEMA public TO "$APP_USER";
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT $TABLE_PRIVILEGE ON TABLES TO "$APP_USER";
+            GRANT $SEQUENCE_PRIVILEGE ON ALL SEQUENCES IN SCHEMA public TO "$APP_USER";
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT $SEQUENCE_PRIVILEGE ON SEQUENCES TO "$APP_USER";
+            EOF
+          environment:
+            DB_NAME: "{{ item.db | trim }}"
+            APP_USER: "{{ item.user | trim }}"
+            TABLE_PRIVILEGE: "{{ item.table_privilege | default('SELECT') }}"
+            SEQUENCE_PRIVILEGE: "{{ item.sequence_privilege | default('USAGE,SELECT') }}"
+          loop: "{{ pg_allowed_user_db }}"
+      when: postgresql_is_primary | default(false) | bool
+
+    # =========================================================================
+    # 2. Cập nhật cấu hình xác thực mạng (pg_hba.conf & pool_hba.conf) trên TẤT CẢ các Node
+    # =========================================================================
+    - name: Update PostgreSQL pg_hba.conf
+      template:
+        src: postgresql/pg_hba.conf.j2
+        dest: '{{ pg_config_dir }}/pg_hba.conf'
+        mode: '0640'
+        owner: postgres
+        group: postgres
+      register: pghba_update_res
+
+    - name: Reload PostgreSQL to apply pg_hba changes
+      systemd:
+        name: postgresql@{{ postgresql_version }}-main.service
+        state: reloaded
+      when: pghba_update_res.changed
+
+    - name: Update Pgpool pool_hba.conf
+      template:
+        src: pgpool2/pool_hba.conf.j2
+        dest: '{{ pgpool_config_dir }}/pool_hba.conf'
+        mode: '0644'
+        owner: root
+        group: root
+      register: poolhba_update_res
+
+    - name: Update pool_passwd with application users
+      shell: |
+        sudo pg_enc -m -k {{ pg_home_dir }}/.pgpoolkey -u "$APP_USER" "$APP_PASS"
+      environment:
+        APP_USER: "{{ item }}"
+        APP_PASS: "{{ lookup('vars', item + '_pass') }}"
+      loop: "{{ app_unique_users }}"
+      register: poolpasswd_update_res
+      no_log: true
+
+    - name: Reload Pgpool to apply pool_hba and pool_passwd changes
+      systemd:
+        name: pgpool2.service
+        state: reloaded
+      when: poolhba_update_res.changed or poolpasswd_update_res.changed
+
+  when: pg_allowed_user_db | default([]) | length > 0

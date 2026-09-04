@@ -82,3 +82,7 @@ keepalived_check_script_path: /etc/keepalived/check_pgpool_leader.sh
 # --- PCP ---
 pgpool_pcp_port: 9898
 pgpool_pcp_user: pgpool
+
+# --- Client & Application Users ---
+pg_allowed_ips: []
+pg_allowed_user_db: []

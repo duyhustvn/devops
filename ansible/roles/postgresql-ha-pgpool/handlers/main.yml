@@ -20,12 +20,26 @@
     state: restarted
   listen: Restart PostgreSQL
 
+- name: Reload PostgreSQL
+  become: true
+  systemd:
+    name: postgresql@{{ postgresql_version }}-main.service
+    state: reloaded
+  listen: Reload PostgreSQL
+
 - name: Restart PgPool
   become: true
   systemd:
     name: pgpool2.service
     state: restarted
   listen: Restart PgPool
+
+- name: Reload PgPool
+  become: true
+  systemd:
+    name: pgpool2.service
+    state: reloaded
+  listen: Reload PgPool
 
 - name: Restart keepalived
   become: true

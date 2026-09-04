@@ -29,12 +29,25 @@ Các biến thường cần override:
 - `device_interface`
 - `pgpool_conf_trusted_servers`
 - `wd_priority` theo từng host
-- password trong vault: `postgres_pass`, `pgpool_pass`, `repl_pass`
+- password trong vault: `postgres_pass`, `pgpool_pass`, `repl_pass`, `{user}_pass`
+- `pg_allowed_ips`: danh sách dải IP được phép kết nối
+- `pg_allowed_user_db`: danh sách database, user và quyền truy cập
+
+## Quản lý User & Database (Day-2)
+
+Khi cần thêm database, user hoặc phân quyền mới:
+1. Thêm cấu hình vào `group_vars/all/vars.yml` trong `pg_allowed_user_db`.
+2. Khai báo mật khẩu `{user}_pass` trong `group_vars/all/vault.yml`.
+3. Chạy playbook quản trị chuyên dụng (chạy nhanh, an toàn, không restart cụm):
+   ```bash
+   ansible-playbook -i inventory/postgresql/devlocal/hosts.yml playbooks/manage-postgresql-users.yml --vault-password-file=.vault_pass
+   ```
 
 ## Tags hữu ích
 
 ```bash
 ansible-playbook site.yml --tags preview_pgpool_conf
 ansible-playbook site.yml --tags preview_postgresql_conf
+ansible-playbook site.yml --tags manage_users
 ansible-playbook site.yml --tags recover_standby
 ```

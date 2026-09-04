@@ -59,6 +59,11 @@
       include_tasks: pgpool2/preview_pgpool_conf.yml
   tags: [ preview_pgpool_conf ]
 
+- block:
+    - name: Manage application users and databases
+      include_tasks: manage_users.yml
+  tags: [ manage_users, grant_user, rc_all ]
+
 # - block:
 #     - name: Deploy pgpool exporter
 #       include_tasks: pgpool2/exporter.yml
