@@ -6,7 +6,7 @@ Ansible role triển khai cụm PostgreSQL HA với Pgpool-II, watchdog/VIP và 
 
 - [Architecture](docs/Architecture.md): kiến trúc Pgpool-II, PostgreSQL streaming replication, watchdog và VIP.
 - [Pgpool Hooks](docs/Pgpool%20Hooks.md): giải thích chi tiết `failover.sh`, `follow_primary.sh`, `escalation.sh` và Pgpool gọi chúng khi nào.
-- [Operations](docs/Operations.md): runbook kiểm tra, failover, recovery và xử lý sự cố.
+- [Operations](docs/Operations.md): runbook kiểm tra, failover, recovery, xử lý sự cố và gỡ cài đặt (uninstall).
 - [High Availability](docs/High%20Availability.md): hướng dẫn manual setup streaming replication.
 - [Change Data Directory](docs/Change%20Data%20Directory.md): đổi data directory PostgreSQL.
 

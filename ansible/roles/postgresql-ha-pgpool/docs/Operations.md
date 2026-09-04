@@ -909,3 +909,112 @@ Trạng thái kỳ vọng:
 - Các standby có `pg_is_in_recovery() = t`.
 - Pgpool status của các node khỏe là `up`.
 - PostgreSQL backend path `:5432` pass trên từng backend.
+
+---
+
+## Gỡ cài đặt và dọn dẹp cụm (Uninstall / Cleanup)
+
+Quy trình này dùng khi cần gỡ bỏ hoàn toàn PostgreSQL và Pgpool-II khỏi các node trong cụm để cài đặt lại từ đầu hoặc giải phóng tài nguyên.
+
+> [!CAUTION]
+> Thao tác này sẽ dừng toàn bộ dịch vụ và có bước **xóa vĩnh viễn dữ liệu database**. Đảm bảo đã sao lưu dữ liệu trước khi thực hiện.
+
+Thực hiện lần lượt các bước sau trên từng node trong cụm:
+
+### 1. Thu hồi Virtual IP (VIP)
+
+Nếu node đang giữ VIP, cần xóa VIP khỏi card mạng để tránh xung đột IP:
+
+```bash
+# Kiểm tra node có đang giữ VIP không (thay tên interface và VIP theo inventory)
+ip addr show <device_interface> | grep <vip>
+
+# Xóa VIP khỏi interface (ví dụ: vip=192.168.56.110/24, interface=enp0s8)
+sudo ip addr del <vip>/<cidr_prefix> dev <device_interface>
+```
+
+### 2. Dừng và disable toàn bộ services
+
+```bash
+# Dừng các service
+sudo systemctl stop pgpool2
+sudo systemctl stop "postgresql@*-main.service"
+sudo systemctl stop postgresql
+sudo systemctl stop keepalived 2>/dev/null || true
+
+# Disable tự khởi động cùng hệ thống
+sudo systemctl disable pgpool2
+sudo systemctl disable postgresql
+sudo systemctl disable keepalived 2>/dev/null || true
+```
+
+### 3. Gỡ bỏ (purge) các packages đã cài đặt
+
+Sử dụng `apt purge` để gỡ bỏ triệt để các package và file cấu hình mặc định của hệ điều hành:
+
+```bash
+sudo apt-get purge -y \
+  pgpool2 \
+  postgresql-*-pgpool2 \
+  "postgresql-*" \
+  postgresql-common \
+  postgresql-client-common
+
+# Dọn dẹp các package phụ thuộc không còn sử dụng
+sudo apt-get autoremove --purge -y
+sudo apt-get clean
+```
+
+### 4. Xóa cấu hình systemd drop-in override
+
+Xóa các file override `LimitNOFILE` do role tạo:
+
+```bash
+sudo rm -rf /etc/systemd/system/pgpool2.service.d
+sudo rm -rf /etc/systemd/system/postgresql@*.service.d
+
+# Reload lại systemd daemon
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+```
+
+### 5. Xóa các file cấu hình và sudoers
+
+```bash
+# Xóa thư mục cấu hình
+sudo rm -rf /etc/pgpool2
+sudo rm -rf /etc/postgresql
+
+# Xóa các quyền sudoers do role cấu hình
+sudo rm -f /etc/sudoers.d/pgpool_remote_start
+sudo rm -f /etc/sudoers.d/postgres_net_commands
+
+# Xóa log và cấu hình rsyslog của Pgpool
+sudo rm -f /etc/rsyslog.d/pgpool.conf
+sudo rm -f /var/log/pgpool.log
+sudo systemctl restart rsyslog
+
+# Nếu cụm có dùng keepalived:
+sudo rm -f /etc/keepalived/check_pgpool_leader.sh
+sudo rm -rf /etc/keepalived
+```
+
+### 6. Xóa thư mục Data và Home của PostgreSQL
+
+```bash
+# Xóa thư mục data PostgreSQL (theo biến pg_data_dir, mặc định: /u01/data/postgresql)
+sudo rm -rf /u01/data/postgresql
+
+# Xóa các file credentials, keys dưới home directory /var/lib/postgresql
+sudo rm -rf /var/lib/postgresql
+```
+
+### 7. Gỡ bỏ PGDG APT Repository (Tùy chọn)
+
+Nếu không còn nhu cầu sử dụng repository chính thức của PostgreSQL:
+
+```bash
+sudo rm -f /etc/apt/sources.list.d/pgdg.list
+sudo rm -f /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+sudo apt-get update
+```
