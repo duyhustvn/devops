@@ -53,6 +53,13 @@ RUN chmod +x /usr/local/bin/perf \
 COPY --from=builder /usr/local/bin/py-spy /usr/local/bin/py-spy
 COPY --from=builder /opt/FlameGraph /opt/FlameGraph
 
+# Copy các helper scripts hữu ích (py-spy, perf flamegraph, analyze-connections)
+COPY scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh \
+    && ln -sf /usr/local/bin/profile-pyspy.sh /usr/local/bin/profile-pyspy \
+    && ln -sf /usr/local/bin/profile-perf.sh /usr/local/bin/profile-perf \
+    && ln -sf /usr/local/bin/analyze-connections.sh /usr/local/bin/analyze-connections
+
 # Thêm FlameGraph vào PATH để tiện thực thi lệnh ở mọi nơi
 ENV PATH="/opt/FlameGraph:${PATH}"
 ENV HOME=/tmp

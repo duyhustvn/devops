@@ -2,12 +2,19 @@
 
 Container image chuyên dụng để **profiling, troubleshooting và trích xuất FlameGraph** cho các ứng dụng chạy trên Linux / Kubernetes Pod.
 
-## 🧰 Các công cụ tích hợp sẵn
+## 🧰 Các công cụ & Scripts tiện ích tích hợp sẵn
 
+### Công cụ lõi
 * **`py-spy`** (0.4.2): Sampling profiler tốc độ cao cho Python (không cần sửa code hay restart tiến trình).
 * **`perf`** (`linux-tools-generic`): Profiler hệ thống Linux chuẩn (CPU cycles, cache misses, kernel & native call stacks).
 * **`FlameGraph`** (Brendan Gregg): Bộ công cụ chuyển stack trace thành biểu đồ `.svg` trực quan (sẵn trong `PATH`: `flamegraph.pl`, `stackcollapse-perf.pl`,...).
+* **`ss`** (`iproute2`): Tiện ích điều tra socket và thống kê kết nối mạng chi tiết.
 * **`busybox`**: Bộ tiện ích dòng lệnh hỗ trợ debug nhanh.
+
+### Scripts tiện ích (Bake sẵn trong `/usr/local/bin`)
+* **`profile-pyspy`** (hoặc `profile-pyspy.sh`): Tự động quét tiến trình Python, đo CPU và render FlameGraph SVG trong 1 lệnh.
+* **`profile-perf`** (hoặc `profile-perf.sh`): Chạy `perf record` + `flamegraph.pl` tự động với tần số 99Hz tối ưu.
+* **`analyze-connections`** (hoặc `analyze-connections.sh`): Báo cáo tình trạng kết nối mạng, phát hiện rò rỉ socket (`CLOSE-WAIT`), nghẽn hàng đợi (`Recv-Q/Send-Q`), và Top Remote IPs.
 
 ---
 
@@ -132,27 +139,42 @@ pgrep -fl python
 
 ### 2. Profile ứng dụng Python với `py-spy`
 
-* **Xem Live Top CPU (tương tự `top` nhưng theo từng dòng code Python):**
-  ```bash
-  py-spy top --pid <PID>
-  ```
+> 💡 **Cách nhanh nhất: Sử dụng script `profile-pyspy` tích hợp sẵn**
+> ```bash
+> # Tự động quét tiến trình Python trong namespace và xuất file FlameGraph SVG:
+> profile-pyspy
+> 
+> # Hoặc chỉ định PID, thời gian đo (giây), và kèm C/C++ extensions:
+> profile-pyspy -p <PID> -d 60 --native
+> 
+> # Xem live CPU top theo từng dòng code:
+> profile-pyspy --top -p <PID>
+> ```
 
-* **In Call Stack hiện tại của tiến trình (Dump):**
-  ```bash
-  py-spy dump --pid <PID>
-  ```
-
-* **Ghi nhận và xuất FlameGraph SVG:**
-  ```bash
-  # Thu thập mẫu trong 30 giây và xuất ra file SVG
-  py-spy record --pid <PID> --duration 30 --output /tmp/python-flamegraph.svg
-  ```
+* **Các lệnh thủ công nâng cao:**
+  * **Xem Live Top CPU:** `py-spy top --pid <PID>`
+  * **In Call Stack hiện tại (Dump):** `py-spy dump --pid <PID>`
+  * **Ghi FlameGraph thủ công:** `py-spy record --pid <PID> --duration 30 --output /tmp/python-flamegraph.svg`
 
 ---
 
 ### 3. Profile toàn hệ thống / Native C/C++ / Go / Rust bằng Linux `perf`
 
-#### 📌 Bước 1: Thu thập dữ liệu Profiling (`perf record`)
+> 💡 **Cách nhanh nhất: Sử dụng script `profile-perf` tích hợp sẵn**
+> ```bash
+> # Profile một tiến trình trong 30s và tự động render FlameGraph SVG:
+> profile-perf <PID>
+> 
+> # Profile ứng dụng Go / Rust / C++ tối ưu hóa (dùng call-graph dwarf):
+> profile-perf -p <PID> -g dwarf -d 60
+> 
+> # Profile toàn bộ hệ thống (tất cả CPU trong namespace):
+> profile-perf -a -d 15
+> ```
+
+#### 📌 Quy trình thủ công chi tiết (nếu không dùng script):
+
+##### Bước 1: Thu thập dữ liệu Profiling (`perf record`)
 
 Chạy lệnh ghi mẫu bên trong shell của container debug:
 ```bash
@@ -217,6 +239,32 @@ Sau khi có file `/tmp/perf.data`, chọn 1 trong 2 cách xuất kết quả dư
    # Hoặc tự render FlameGraph trên máy local:
    perf script -i ./perf.data | stackcollapse-perf.pl | flamegraph.pl > local-flamegraph.svg
    ```
+
+---
+
+### 4. Phân tích kết nối mạng & Troubleshooting Socket với `analyze-connections`
+
+Script `analyze-connections` sử dụng `ss` (Socket Statistics) để quét toàn diện tình trạng mạng trong namespace của Pod, tự động phát hiện rò rỉ socket, nghẽn hàng đợi buffer:
+
+```bash
+# 1. Báo cáo tổng quan toàn diện (Summary socket, TCP states breakdown, Queue backlog, Listening ports, Top IPs)
+analyze-connections
+
+# 2. Theo dõi kết nối thời gian thực (Live watch mode, tự động refresh mỗi 2s)
+analyze-connections -w
+
+# 3. Điều tra lỗi rò rỉ socket (Lọc các kết nối bị kẹt ở CLOSE-WAIT)
+analyze-connections -s close-wait
+
+# 4. Phát hiện các socket bị nghẽn hàng đợi (Recv-Q > 0 hoặc Send-Q > 0)
+analyze-connections --queues
+
+# 5. Lọc kết nối theo Port cụ thể (Local hoặc Remote port)
+analyze-connections -p 8080
+
+# 6. Xem Top 20 địa chỉ IP từ xa kết nối tới Pod
+analyze-connections -t 20
+```
 
 ---
 
