@@ -35,6 +35,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # Chỉ cài các runtime packages cần thiết
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        bsdextrautils \
         busybox-static \
         iproute2 \
         linux-tools-generic \

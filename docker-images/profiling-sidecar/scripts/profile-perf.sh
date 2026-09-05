@@ -13,6 +13,7 @@ if [ -t 1 ]; then
     RED='\033[0;31m'
     BLUE='\033[0;34m'
     CYAN='\033[0;36m'
+    BOLD='\033[1m'
     NC='\033[0m'
 else
     GREEN=''
@@ -20,6 +21,7 @@ else
     RED=''
     BLUE=''
     CYAN=''
+    BOLD=''
     NC=''
 fi
 
@@ -27,6 +29,14 @@ log_info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+log_cmd() {
+    local INDENT=""
+    if [[ "$#" -gt 1 && "$1" =~ ^[[:space:]]+$ ]]; then
+        INDENT="$1"
+        shift
+    fi
+    echo -e "${INDENT}${CYAN}[CMD]${NC} ${BOLD}$*${NC}"
+}
 
 usage() {
     local EXIT_CODE="${1:-0}"
@@ -153,6 +163,7 @@ elif [[ -n "$PID" ]]; then
 else
     log_warn "Chưa chỉ định PID và không dùng cờ -a (all-cpus)."
     log_info "Danh sách các tiến trình đang chạy trong namespace:"
+    log_cmd "ps -eo pid,comm,args"
     echo "----------------------------------------------------------------------"
     ps -eo pid,comm,args || ps aux
     echo "----------------------------------------------------------------------"
@@ -198,6 +209,7 @@ echo -e "  - File SVG đầu ra   : ${GREEN}${OUTPUT}${NC}"
 echo -e "${CYAN}======================================================================${NC}\n"
 
 log_info "Bước 1/2: Đang ghi mẫu CPU bằng 'perf record' (Vui lòng đợi ${DURATION}s)..."
+log_cmd "perf record -F $FREQ $TARGET_ARG -g --call-graph $CALL_GRAPH -e $EVENT -o $TEMP_DATA -- sleep $DURATION"
 
 # Thực hiện perf record
 # shellcheck disable=SC2086
@@ -215,6 +227,7 @@ if [[ ! -s "$TEMP_DATA" ]]; then
 fi
 
 log_info "Bước 2/2: Đang chuyển đổi dữ liệu và dựng biểu đồ FlameGraph SVG..."
+log_cmd "perf script -i $TEMP_DATA | stackcollapse-perf.pl | flamegraph.pl --title=\"$TITLE\" > $OUTPUT"
 
 # Chuyển đổi: perf script | stackcollapse | flamegraph
 if ! perf script -i "$TEMP_DATA" | stackcollapse-perf.pl | flamegraph.pl --title="$TITLE" > "$OUTPUT"; then
@@ -226,6 +239,8 @@ fi
 # Dọn dẹp hoặc thông báo file perf.data
 if [[ "$KEEP_DATA" -eq 1 ]]; then
     log_info "Đã giữ lại file dữ liệu thô: ${TEMP_DATA}"
+    log_info "Để phân tích dữ liệu trực tiếp trên terminal, dùng lệnh:"
+    log_cmd "perf report -i ${TEMP_DATA}"
 else
     rm -f "$TEMP_DATA"
 fi

@@ -13,6 +13,7 @@ if [ -t 1 ]; then
     RED='\033[0;31m'
     BLUE='\033[0;34m'
     CYAN='\033[0;36m'
+    BOLD='\033[1m'
     NC='\033[0m'
 else
     GREEN=''
@@ -20,6 +21,7 @@ else
     RED=''
     BLUE=''
     CYAN=''
+    BOLD=''
     NC=''
 fi
 
@@ -27,6 +29,14 @@ log_info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+log_cmd() {
+    local INDENT=""
+    if [[ "$#" -gt 1 && "$1" =~ ^[[:space:]]+$ ]]; then
+        INDENT="$1"
+        shift
+    fi
+    echo -e "${INDENT}${CYAN}[CMD]${NC} ${BOLD}$*${NC}"
+}
 
 usage() {
     local EXIT_CODE="${1:-0}"
@@ -131,6 +141,7 @@ done
 # Tự động tìm PID nếu chưa được chỉ định
 if [[ -z "$PID" ]]; then
     log_info "Đang tìm kiếm các tiến trình Python đang chạy..."
+    log_cmd "ps -eo pid,comm,args"
     
     # Tìm các tiến trình python/gunicorn/uvicorn/celery
     PYTHON_PROCS=$(ps -eo pid,comm,args 2>/dev/null | grep -iE 'python|gunicorn|uvicorn|celery' | grep -v grep | grep -v "$(basename "$0")" || true)
@@ -176,12 +187,14 @@ PROC_NAME=$(ps -p "$PID" -o comm= 2>/dev/null || echo "python")
 # Chế độ TOP
 if [[ "$MODE" == "top" ]]; then
     log_info "Khởi động py-spy top cho PID $PID ($PROC_NAME)... (Nhấn Ctrl+C để thoát)"
+    log_cmd "py-spy top --pid $PID $NATIVE_FLAG $SUBPROC_FLAG"
     exec py-spy top --pid "$PID" $NATIVE_FLAG $SUBPROC_FLAG
 fi
 
 # Chế độ DUMP
 if [[ "$MODE" == "dump" ]]; then
     log_info "Đang trích xuất Call Stack hiện tại của PID $PID ($PROC_NAME)..."
+    log_cmd "py-spy dump --pid $PID $NATIVE_FLAG"
     exec py-spy dump --pid "$PID" $NATIVE_FLAG
 fi
 
@@ -203,6 +216,7 @@ echo -e "  - File SVG đầu ra   : ${GREEN}${OUTPUT}${NC}"
 echo -e "${CYAN}======================================================================${NC}\n"
 
 log_info "Bắt đầu thu thập dữ liệu (Vui lòng đợi ${DURATION} giây)..."
+log_cmd "py-spy record --pid $PID --duration $DURATION --rate $RATE --output $OUTPUT $NATIVE_FLAG $SUBPROC_FLAG"
 
 py-spy record \
     --pid "$PID" \

@@ -28,6 +28,15 @@ fi
 log_info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_warn()    { echo -e "${YELLOW}[CẢNH BÁO]${NC} $*"; }
 log_error()   { echo -e "${RED}[LỖI]${NC} $*" >&2; }
+log_cmd() {
+    local INDENT=""
+    if [[ "$#" -gt 1 && "$1" =~ ^[[:space:]]+$ ]]; then
+        INDENT="$1"
+        shift
+    fi
+    echo -e "${INDENT}${CYAN}[CMD]${NC} ${BOLD}$*${NC}"
+}
+
 
 usage() {
     local EXIT_CODE="${1:-0}"
@@ -107,6 +116,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Hàm định dạng bảng hiển thị (ưu tiên dùng column nếu có, fallback sang cat nếu thiếu)
+format_table() {
+    if command -v column &>/dev/null; then
+        column -t
+    else
+        cat
+    fi
+}
+
 # Hàm xuất kết nối theo bộ lọc tùy chỉnh
 run_filtered() {
     echo -e "${CYAN}=== DANH SÁCH KẾT NỐI THEO BỘ LỌC ===${NC}"
@@ -122,11 +140,13 @@ run_filtered() {
 
     if [[ "$FILTER_QUEUES" -eq 1 ]]; then
         echo -e "${YELLOW}Đang lọc các socket có Recv-Q > 0 hoặc Send-Q > 0...${NC}"
+        log_cmd "ss $SS_ARGS | awk 'NR==1 || (\$2 > 0 || \$3 > 0)'"
         # shellcheck disable=SC2086
-        ss $SS_ARGS | awk 'NR==1 || ($2 > 0 || $3 > 0)' | column -t
+        ss $SS_ARGS | awk 'NR==1 || ($2 > 0 || $3 > 0)' | format_table
     else
+        log_cmd "ss $SS_ARGS"
         # shellcheck disable=SC2086
-        ss $SS_ARGS | column -t
+        ss $SS_ARGS | format_table
     fi
 }
 
@@ -142,11 +162,13 @@ generate_report() {
 
     # 1. Tổng quan Socket từ ss -s
     echo -e "${BOLD}1. 📊 TỔNG QUAN SOCKET (Summary):${NC}"
+    log_cmd "   " "ss -s"
     ss -s | sed 's/^/   /'
     echo ""
 
     # 2. Thống kê số lượng kết nối theo trạng thái TCP
     echo -e "${BOLD}2. 📈 PHÂN BỔ TRẠNG THÁI TCP (TCP States Breakdown):${NC}"
+    log_cmd "   " "ss -tan"
     printf "   %-18s : %s\n" "TRẠNG THÁI" "SỐ LƯỢNG"
     echo "   ------------------------------------"
 
@@ -209,6 +231,7 @@ generate_report() {
 
     # 3. Phân tích ứ đọng Hàng đợi (Queue Backlog / Congestion)
     echo -e "${BOLD}3. ⏳ HÀNG ĐỢI SOCKET Ứ ĐỌNG (Recv-Q & Send-Q Congestion):${NC}"
+    log_cmd "   " "ss -tanp"
     local QUEUE_SOCKETS
     QUEUE_SOCKETS=$(ss -tanp 2>/dev/null | awk '
         NR>1 {
@@ -234,6 +257,7 @@ generate_report() {
 
     # 4. Các cổng đang mở Lắng nghe (Listening Ports)
     echo -e "${BOLD}4. 🎧 CÁC CỔNG ĐANG LẮNG NGHE (Listening Ports):${NC}"
+    log_cmd "   " "ss -tulnp"
     local LISTEN_SOCKETS
     LISTEN_SOCKETS=$(ss -tulnp 2>/dev/null || ss -tuln 2>/dev/null || true)
     if [[ -n "$LISTEN_SOCKETS" ]]; then
@@ -245,6 +269,7 @@ generate_report() {
 
     # 5. Top IP từ xa kết nối nhiều nhất
     echo -e "${BOLD}5. 🌐 TOP ${TOP_N} ĐỊA CHỈ IP TỪ XA KẾT NỐI NHIỀU NHẤT (Established):${NC}"
+    log_cmd "   " "ss -tan state established"
     local TOP_IPS
     TOP_IPS=$(ss -tan state established 2>/dev/null | awk 'NR>1 {print $4}' | sed -E 's/:[0-9]+$//; s/^\[//; s/\]$//' | grep -v '^\*$' | grep -v '^$' | sort | uniq -c | sort -nr | head -n "$TOP_N" || true)
 
