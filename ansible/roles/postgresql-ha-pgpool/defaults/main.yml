@@ -15,64 +15,14 @@ pg_data_dir: /u01/data/postgresql/{{ postgresql_version }}/main
 pg_config_dir: /etc/postgresql/{{ postgresql_version }}/main
 pg_home_dir: /var/lib/postgresql
 pg_lib_dir: /usr/lib/postgresql/{{ postgresql_version }}
-pg_conf_max_connection: 2000
+pg_conf_max_connection: 1000
 # 0 disables PostgreSQL's idle-in-transaction session cleanup.
-pg_conf_idle_in_transaction_session_timeout: 0
+pg_conf_idle_in_transaction_session_timeout: 60s
 # systemd service limits. systemd services không dùng /etc/security/limits.d.
 postgresql_limit_nofile: 65536
 # Render postgresql.conf candidate without replacing the active config.
 # Use with: --tags preview_postgresql_conf
 postgresql_conf_preview_path: /tmp/postgresql.conf.preview
-
-# PgBouncer — optional middle layer between Pgpool và PostgreSQL trên mỗi node.
-# true:  Pgpool kết nối tới pgbouncer trên node backend qua {{ pgbouncer_port }}.
-# false: Pgpool bỏ qua pgbouncer và kết nối trực tiếp PostgreSQL qua {{ pg_port }}.
-# Lưu ý: pgbouncer KHÔNG hỗ trợ streaming replication protocol nên pg_basebackup /
-# pg_rewind / primary_conninfo luôn dùng {{ pg_port }} trực tiếp.
-pgbouncer_enabled: false
-pgbouncer_port: 6432
-pgbouncer_config_dir: /etc/pgbouncer
-pgbouncer_listen_addr: '*'
-# transaction: cho throughput cao nhất; app phải KHÔNG dùng LISTEN/NOTIFY,
-# session-level SET (không LOCAL), session advisory lock (pg_advisory_lock),
-# WITH HOLD cursor, temp table cross-txn. Nếu dùng server-side prepared
-# statements (psycopg3 / JDBC / asyncpg / Hibernate) thì BẮT BUỘC bật
-# pgbouncer_max_prepared_statements >= 1 (yêu cầu pgbouncer >= 1.21).
-# session: chọn khi cần tương thích tuyệt đối với mọi feature session-state
-# của PostgreSQL (vd app legacy, tool DBA, Alembic migration đi qua pool).
-pgbouncer_pool_mode: transaction
-pgbouncer_max_client_conn: 1000
-# default_pool_size là số server connection cho mỗi cặp (user, database), không
-# phải tổng toàn cụm. Đặt quá cao dễ gây "too many open files" và vượt
-# PostgreSQL max_connections.
-pgbouncer_default_pool_size: 900
-pgbouncer_min_pool_size: 0
-pgbouncer_reserve_pool_size: 5
-pgbouncer_reserve_pool_timeout: 5
-pgbouncer_server_idle_timeout: 600
-pgbouncer_backend_connection_margin: 10
-pgbouncer_limit_nofile: 65536
-# Ảo hoá prepared statements (yêu cầu pgbouncer >= 1.21).
-# Bắt buộc > 0 nếu app dùng server-side prepared statements
-# (psycopg3 mặc định, JDBC, asyncpg, …) trên pool_mode = transaction.
-# Mặc định 0 = tắt; đặt 100–500 để bảo hiểm cho tương lai.
-pgbouncer_max_prepared_statements: 0
-pgbouncer_auth_user: pgbouncer
-pgbouncer_auth_type: scram-sha-256
-pgbouncer_auth_query: 'SELECT usename, passwd FROM public.pgbouncer_get_auth($1)'
-# Database dùng để chạy auth_query. Không để implicit vì client/admin có thể
-# connect tới reserved database "pgbouncer" và làm auth_query fail.
-pgbouncer_auth_dbname: postgres
-# Password plaintext chỉ cho role nội bộ pgbouncer trong userlist.txt. Role này
-# dùng để login PostgreSQL chạy auth_query; không chứa password app users.
-pgbouncer_auth_password: '{{ pgbouncer_pass }}'
-# Danh sách database được khai báo trong [databases]. Mặc định '*' để wildcard
-# (mọi DB sẽ được forward về localhost:{{ pg_port }}).
-pgbouncer_databases:
-  - name: '*'
-    host: 127.0.0.1
-    port: '{{ pg_port }}'
-
 # Pgpool-II
 pgpool_version: 4.6
 pgpool_config_dir: /etc/pgpool2
@@ -86,8 +36,8 @@ pgpool_conf_preview_path: /tmp/pgpool.conf.preview
 arping_path: /usr/bin
 if_cmd_path: /sbin
 
-pgpool_conf_num_init_children: 2000
-pgpool_conf_max_pool: 1
+pgpool_conf_num_init_children: 500
+pgpool_conf_max_pool: 2
 
 # Nếu on thì các câu read sẽ được chia về replica
 # Nếu off thì gửi tất cả câu query về master  
@@ -132,3 +82,7 @@ keepalived_check_script_path: /etc/keepalived/check_pgpool_leader.sh
 # --- PCP ---
 pgpool_pcp_port: 9898
 pgpool_pcp_user: pgpool
+
+# --- Client & Application Users ---
+pg_allowed_ips: []
+pg_allowed_user_db: []

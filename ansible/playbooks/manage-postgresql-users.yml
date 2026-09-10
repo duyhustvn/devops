@@ -1,0 +1,14 @@
+---
+- name: Manage PostgreSQL Application Users and Databases
+  hosts: all
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - include_vars: ../group_vars/all/vars.yml
+      tags: [ always ]
+
+  tasks:
+    - name: Manage application users, databases and authentication
+      include_role:
+        name: postgresql-ha-pgpool
+        tasks_from: manage_users.yml

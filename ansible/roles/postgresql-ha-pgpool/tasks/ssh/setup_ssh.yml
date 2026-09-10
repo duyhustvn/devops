@@ -7,7 +7,7 @@
     group: postgres
     mode: '0700'
 
-- name: Generate an RSA keypair for pgpool
+- name: Generate an RSA keypair for pgpool if not exists
   openssh_keypair:
     path: '{{ pg_home_dir }}/.ssh/{{ ssh_key_file }}'
     type: rsa
@@ -15,23 +15,13 @@
     owner: postgres
     group: postgres
     mode: '0600'
-    # passphrase: "{{ ssh_key_file_secret }}" # not use passphrase
-    force: true
+    force: false
     comment: "pgpool {{ inventory_hostname }}"
 
-- name: Slurp the public key into a variable
+- name: Slurp local public key
   slurp:
     path: "{{ pg_home_dir }}/.ssh/{{ ssh_key_file }}.pub"
-  register: slurped
-
-- name: Store decoded public key in hostvars
-  set_fact:
-    pgpool_pubkey: "{{ slurped.content | b64decode }}"
-
-- name: Remove authorized_keys of user postgres first
-  file:
-    path: "{{ pg_home_dir }}/.ssh/authorized_keys"
-    state: absent
+  register: local_pubkey
 
 - name: Ensure authorized_keys of user postgres exists
   file:
@@ -41,11 +31,34 @@
     group: postgres
     mode: '0600'
 
-- name: Add each host’s pgpool public key to authorized_keys
+- name: Collect pgpool public keys from all cluster hosts
+  slurp:
+    path: "{{ pg_home_dir }}/.ssh/{{ ssh_key_file }}.pub"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['all'] }}"
+  register: slurped_cluster_keys
+  failed_when: false
+  changed_when: false
+
+- name: Add cluster public keys to local authorized_keys
   authorized_key:
     user: postgres
-    key: "{{ hostvars[item].pgpool_pubkey }}"
+    key: "{{ item.content | b64decode }}"
     state: present
+  loop: "{{ slurped_cluster_keys.results }}"
+  when:
+    - item.content is defined
+    - (item.content | length) > 0
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Distribute local public key to all available cluster hosts
+  authorized_key:
+    user: postgres
+    key: "{{ local_pubkey.content | b64decode }}"
+    state: present
+  delegate_to: "{{ item }}"
   loop: "{{ groups['all'] }}"
+  failed_when: false
   loop_control:
     label: "{{ item }}"

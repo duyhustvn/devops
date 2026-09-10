@@ -49,6 +49,11 @@ ansible-playbook -i inventory/superset/devlocal/hosts.yml playbooks/install-supe
 ### 2.3. Cụm PostgreSQL Cluster (với Pgpool-II HA)
 Triển khai cụm cơ sở dữ liệu PostgreSQL kèm Pgpool:
 ```bash
-ansible-playbook -i inventory/postgresql/devlocal/ubuntu/hosts.yml playbooks/install-postgresql-cluster.yml --vault-password-file=.ansible-vault-secret-devlocal
+ansible-playbook -i inventory/postgresql/devlocal/hosts.yml playbooks/install-postgresql-cluster.yml --vault-password-file=.ansible-vault-secret-devlocal
 ```
-- Chạy tags cụ thể: `--tags config_psql,config_pgpool`
+- Chạy tags cụ thể: `--tags config_psql,config_pgpool,manage_users`
+
+Quản trị thêm User / Database mới (Day-2 Operations, không restart cluster):
+```bash
+ansible-playbook -i inventory/postgresql/devlocal/hosts.yml playbooks/manage-postgresql-users.yml --vault-password-file=.ansible-vault-secret-devlocal
+```

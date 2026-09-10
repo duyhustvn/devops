@@ -1,3 +1,8 @@
+- name: Check if PostgreSQL data directory already initialized at {{ pg_data_dir }}
+  stat:
+    path: '{{ pg_data_dir }}/PG_VERSION'
+  register: pg_data_dir_stat
+
 - block:
   - name: Create new data directory at {{ pg_data_dir }}
     file:
@@ -28,3 +33,4 @@
     systemd:
       name: postgresql@{{ postgresql_version }}-main.service
       state: started
+  when: not pg_data_dir_stat.stat.exists

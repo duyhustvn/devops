@@ -1,7 +1,7 @@
 - block:
-    - name: Detect PostgreSQL primary
-      include_tasks: psql/detect_primary.yml
-  tags: [ grant_user ]
+    - name: Manage application users and databases
+      include_tasks: manage_users.yml
+  tags: [ grant_user, manage_users ]
 
 - block:
     - name: Update pg_hba of PostgreSQL
@@ -13,12 +13,6 @@
       include_tasks: pgpool2/update_pool_hba.yml
   notify: Restart PgPool
   tags: [ update_pool_hba ]
-
-- block:
-    - name: Grant privilege
-      include_tasks: psql/grant_user.yml
-  when: postgresql_is_primary | default(false) | bool
-  tags: [ grant_user ]
 
 - block:
   - name: Config Pgpool
