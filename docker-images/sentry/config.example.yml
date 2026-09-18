@@ -1,0 +1,25 @@
+# ==============================================================================
+# Sentry Custom Configuration (config.yml)
+# Sao chép các trường cần thiết vào self-hosted/sentry/config.yml
+# ==============================================================================
+
+# 1. URL Root của Sentry (Phải bắt đầu bằng http:// hoặc https://)
+# Cần cấu hình chính xác để các liên kết trong email cảnh báo và SDK hoạt động đúng.
+system.url-prefix: 'https://sentry.yourdomain.com'
+
+# 2. Cấu hình gửi mail (SMTP)
+mail.backend: 'smtp'
+mail.host: 'smtp.gmail.com'
+mail.port: 587
+mail.username: 'your-email@gmail.com'
+mail.password: 'your-app-password'
+mail.use-tls: true
+mail.from: 'sentry-alerts@yourdomain.com'
+
+# 3. Giới hạn đăng ký tài khoản tự do (Bảo mật)
+# Đặt thành false để ngăn người ngoài tự tạo tài khoản trên Sentry instance của bạn
+auth.allow-registration: false
+
+# 4. Cấu hình Beacon (Gửi thông tin thống kê ẩn danh về Sentry HQ)
+# Đặt thành false nếu bạn triển khai trong môi trường mạng nội bộ / Private VPC
+beacon.anonymous: false

@@ -1,0 +1,19 @@
+# ==============================================================================
+# Docker Compose Override Example (docker-compose.override.yml)
+# Copy file này vào thư mục self-hosted/docker-compose.override.yml nếu cần tùy biến
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # Ví dụ: Gắn service nginx của Sentry vào một Docker network chung với reverse proxy ngoài
+  nginx:
+    # ports:
+    #   - "127.0.0.1:9000:80"
+    networks:
+      - default
+      # - web_gateway
+
+# networks:
+#   web_gateway:
+#     external: true
