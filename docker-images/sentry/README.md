@@ -116,7 +116,71 @@ docker-images/sentry/
 
 ---
 
-## 5. Hướng Dẫn Cài Đặt Chi Tiết
+## 5. Cấu Hình Khi Máy Chủ Nằm Sau Proxy (Corporate HTTP/HTTPS Proxy)
+
+Nếu máy chủ của bạn nằm trong mạng nội bộ doanh nghiệp và phải đi qua Proxy Server để ra ngoài Internet, bạn **bắt buộc** phải cấu hình proxy đồng bộ ở 3 cấp độ (Docker Daemon, Docker Client và Shell) trước khi thực hiện cài đặt.
+
+### Bước 1: Cấu hình Docker Daemon (để `docker pull` images từ Docker Hub)
+Tạo file cấu hình dịch vụ `/etc/systemd/system/docker.service.d/http-proxy.conf`:
+```bash
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
+[Service]
+Environment="HTTP_PROXY=http://proxy-server:port"
+Environment="HTTPS_PROXY=http://proxy-server:port"
+Environment="NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.local"
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+*(Thay `http://proxy-server:port` bằng địa chỉ IP và port của proxy trong mạng của bạn)*.
+
+### Bước 2: Cấu hình Docker Client (Cực kỳ quan trọng khi chạy `install.sh`)
+Trong quá trình chạy `./install.sh`, Sentry sẽ tạo container tạm để build và chạy lệnh `apt-get` (ví dụ cài đặt gói `jq`). Bạn cần cấu hình file `~/.docker/config.json` để các container này nhận được proxy ra ngoài:
+
+```bash
+mkdir -p ~/.docker
+cat <<'EOF' > ~/.docker/config.json
+{
+  "proxies": {
+    "default": {
+      "httpProxy": "http://proxy-server:port",
+      "httpsProxy": "http://proxy-server:port",
+      "noProxy": "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,sentry,postgres,redis,clickhouse,kafka,zookeeper,snuba,relay,symbolicator,web,memcached,nginx,.local"
+    }
+  }
+}
+EOF
+```
+
+> [!CAUTION]
+> **Quy tắc "sống còn" với `noProxy`:**
+> Danh sách `noProxy` **bắt buộc phải khai báo dải mạng nội bộ Docker và toàn bộ tên các container nội bộ** (`kafka`, `clickhouse`, `postgres`, `redis`, `snuba`, `relay`...). Nếu thiếu, các container Sentry gọi nội bộ nhau sẽ bị ném ra proxy bên ngoài và dẫn tới lỗi sập toàn bộ hệ thống!
+
+### Bước 3: Cấu hình phiên làm việc Terminal (Shell Environment)
+Trước khi chạy `git clone` hoặc script `./deploy.sh`, hãy nạp proxy vào terminal:
+
+```bash
+export http_proxy="http://proxy-server:port"
+export https_proxy="http://proxy-server:port"
+export HTTP_PROXY="http://proxy-server:port"
+export HTTPS_PROXY="http://proxy-server:port"
+export no_proxy="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+export NO_PROXY="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+```
+
+### Bước 4: Cấu hình Outbound HTTP Proxy cho Sentry Backend (Tùy chọn)
+Nếu sau này Sentry cần gửi cảnh báo ra ngoài (Webhook tới Slack, Microsoft Teams, GitHub, Jira) qua proxy, thêm cấu hình sau vào `self-hosted/sentry/config.yml`:
+
+```yaml
+system.http-proxy: 'http://proxy-server:port'
+system.https-proxy: 'http://proxy-server:port'
+```
+
+---
+
+## 6. Hướng Dẫn Cài Đặt Chi Tiết
 
 ### Cách 1: Sử dụng Script Tự Động (Khuyến nghị)
 
@@ -213,7 +277,7 @@ Sau khoảng 1 - 2 phút để các container hoàn tất khởi động và hea
 
 ---
 
-## 6. Cấu Hình Nginx Reverse Proxy & SSL (HTTPS)
+## 7. Cấu Hình Nginx Reverse Proxy & SSL (HTTPS)
 
 Để đảm bảo an toàn dữ liệu telemetry gửi từ client và cho phép tích hợp Webhook/SSO, bạn nên trỏ tên miền và kích hoạt HTTPS thông qua Nginx Reverse Proxy.
 
@@ -242,7 +306,7 @@ File cấu hình mẫu đã được chuẩn bị tại: [nginx/sentry.conf](fil
 
 ---
 
-## 7. Vận Hành, Bảo Trì & Dọn Dẹp Dữ Liệu
+## 8. Vận Hành, Bảo Trì & Dọn Dẹp Dữ Liệu
 
 ### Quản lý vòng đời dịch vụ:
 ```bash
@@ -279,7 +343,7 @@ Bạn có thể thiết lập Cronjob trên VM (`crontab -e`) để tự động
 
 ---
 
-## 8. Hướng Dẫn Tích Hợp Thử Nghiệm Với Ứng Dụng
+## 9. Hướng Dẫn Tích Hợp Thử Nghiệm Với Ứng Dụng
 
 Sau khi đăng nhập vào Web UI Sentry, tạo một Project mới (chọn nền tảng mong muốn, ví dụ Python hoặc Node.js) và lấy chuỗi **DSN**.
 

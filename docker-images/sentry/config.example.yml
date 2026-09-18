@@ -23,3 +23,9 @@ auth.allow-registration: false
 # 4. Cấu hình Beacon (Gửi thông tin thống kê ẩn danh về Sentry HQ)
 # Đặt thành false nếu bạn triển khai trong môi trường mạng nội bộ / Private VPC
 beacon.anonymous: false
+
+# 5. Cấu hình Outbound HTTP/HTTPS Proxy (Nếu máy chủ nằm sau Corporate Proxy)
+# Bỏ dấu comment và điền proxy nếu cần gửi Webhook ra Slack, Teams, Jira qua proxy
+# system.http-proxy: 'http://proxy-server:port'
+# system.https-proxy: 'http://proxy-server:port'
+
