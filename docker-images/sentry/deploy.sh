@@ -77,25 +77,61 @@ echo -e " - ${DOCKER_VER}"
 echo -e " - ${COMPOSE_VER}"
 echo -e "${GREEN}[OK] Docker & Docker Compose đã sẵn sàng.${NC}"
 
-# 4. Target Directory
+# 4. Target Directory & Release Tag Detection
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="${SCRIPT_DIR}/self-hosted"
 
-echo -e "\n${BLUE}>>> 3. Chuẩn bị mã nguồn getsentry/self-hosted...${NC}"
+echo -e "\n${BLUE}>>> 3. Xác định phiên bản phát hành (Release Tag) của Sentry...${NC}"
+echo "Đang kiểm tra thông tin phiên bản phát hành từ GitHub..."
+RELEASE_JSON=$(curl -s https://api.github.com/repos/getsentry/self-hosted/releases/latest || true)
+LATEST_TAG=$(echo "$RELEASE_JSON" | grep '"tag_name":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
+PUBLISHED_AT=$(echo "$RELEASE_JSON" | grep '"published_at":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
+
+if [ -z "$LATEST_TAG" ]; then
+    LATEST_TAG=$(git -c 'versionsort.suffix=-' ls-remote --tags --refs https://github.com/getsentry/self-hosted.git | awk -F/ '{print $3}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+fi
+
+# Fallback nếu không kết nối được
+if [ -z "$LATEST_TAG" ]; then
+    LATEST_TAG="26.9.0"
+fi
+
+echo -e " - Phiên bản release ổn định mới nhất : ${GREEN}${LATEST_TAG}${NC}"
+
+if [ -n "$PUBLISHED_AT" ]; then
+    PUBLISHED_DATE=$(date -d "$PUBLISHED_AT" +"%d/%m/%Y %H:%M:%S UTC" 2>/dev/null || echo "$PUBLISHED_AT")
+    PUBLISHED_SEC=$(date -d "$PUBLISHED_AT" +%s 2>/dev/null || echo 0)
+    NOW_SEC=$(date +%s)
+    if [ "$PUBLISHED_SEC" -gt 0 ]; then
+        DIFF_SEC=$((NOW_SEC - PUBLISHED_SEC))
+        DAYS_AGO=$((DIFF_SEC / 86400))
+        echo -e " - Ngày phát hành (Release Date)       : ${GREEN}${PUBLISHED_DATE}${NC}"
+        echo -e " - Thời gian đã trôi qua               : ${YELLOW}${DAYS_AGO} ngày trước${NC}"
+    fi
+fi
+
+echo -e "\nNhập phiên bản bạn muốn cài đặt [Nhấn Enter để dùng ${LATEST_TAG}]:"
+read -r INPUT_TAG
+SENTRY_TAG="${INPUT_TAG:-$LATEST_TAG}"
+echo -e "Sẽ sử dụng release tag: ${GREEN}${SENTRY_TAG}${NC}"
+
 if [ -d "$TARGET_DIR" ]; then
     echo -e "${YELLOW}Thư mục ${TARGET_DIR} đã tồn tại.${NC}"
-    echo "Bạn có muốn tiếp tục sử dụng thư mục này không? (y/n)"
+    echo "Bạn có muốn chuyển sang release ${SENTRY_TAG} trong thư mục này không? (y/n)"
     read -r REUSE_DIR
-    if [ "$REUSE_DIR" != "y" ] && [ "$REUSE_DIR" != "Y" ]; then
+    if [ "$REUSE_DIR" = "y" ] || [ "$REUSE_DIR" = "Y" ]; then
+        cd "$TARGET_DIR"
+        git fetch --tags
+        git checkout "$SENTRY_TAG"
+    else
         echo "Đã hủy cài đặt."
         exit 0
     fi
 else
-    echo "Cloning https://github.com/getsentry/self-hosted.git vào ${TARGET_DIR}..."
-    git clone https://github.com/getsentry/self-hosted.git "$TARGET_DIR"
+    echo "Cloning https://github.com/getsentry/self-hosted.git (tag: ${SENTRY_TAG}) vào ${TARGET_DIR}..."
+    git clone --branch "$SENTRY_TAG" --depth 1 https://github.com/getsentry/self-hosted.git "$TARGET_DIR"
+    cd "$TARGET_DIR"
 fi
-
-cd "$TARGET_DIR"
 
 # 5. Optional custom environment configuration
 echo -e "\n${BLUE}>>> 4. Cấu hình biến môi trường tùy chỉnh...${NC}"

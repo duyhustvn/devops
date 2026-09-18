@@ -149,14 +149,26 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-#### Bước 2: Clone repository `getsentry/self-hosted`
+#### Bước 2: Clone repository `getsentry/self-hosted` theo Release Tag ổn định
+
+> [!WARNING]
+> **Không triển khai trực tiếp từ nhánh `master`:** Sentry chính thức khuyến cáo **không chạy từ nhánh `master`** trên môi trường Production vì `master` liên tục nhận commit phát triển mới, chưa qua kiểm thử ổn định và có thể làm gãy các bước migration. Hãy luôn clone hoặc checkout theo **Release Tag** chính thức từ [GitHub Releases](https://github.com/getsentry/self-hosted/releases).
+
 ```bash
 cd /home/vbox/projects/devops/docker-images/sentry
-git clone https://github.com/getsentry/self-hosted.git
+
+# Lấy thông tin bản release mới nhất kèm ngày phát hành và số ngày trôi qua
+RELEASE_DATA=$(curl -s https://api.github.com/repos/getsentry/self-hosted/releases/latest)
+LATEST_TAG=$(echo "$RELEASE_DATA" | grep '"tag_name":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+PUBLISHED_AT=$(echo "$RELEASE_DATA" | grep '"published_at":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+DAYS_AGO=$(( ($(date +%s) - $(date -d "$PUBLISHED_AT" +%s)) / 86400 ))
+
+echo "Bản release mới nhất: $LATEST_TAG (Phát hành ngày $(date -d "$PUBLISHED_AT" +"%d/%m/%Y") - cách đây $DAYS_AGO ngày)"
+
+# Clone trực tiếp theo release tag với --depth 1 (nhẹ và đảm bảo tính ổn định)
+git clone --branch "$LATEST_TAG" --depth 1 https://github.com/getsentry/self-hosted.git
 cd self-hosted
 ```
-
-*(Tùy chọn: Checkout phiên bản tag ổn định cụ thể, ví dụ `git checkout 24.1.0`)*.
 
 #### Bước 3: Cấu hình biến môi trường và thiết lập
 Tạo file cấu hình tùy chỉnh để kiểm soát thời gian lưu trữ dữ liệu và cổng truy cập:
