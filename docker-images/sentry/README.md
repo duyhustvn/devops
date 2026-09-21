@@ -106,7 +106,8 @@ flowchart LR
 ```text
 docker-images/sentry/
 ├── README.md                           # Tài liệu hướng dẫn toàn diện này
-├── deploy.sh                           # Script tự động kiểm tra hệ thống và cài đặt
+├── deploy.sh                           # Script tự động kiểm tra hệ thống, proxy và cài đặt
+├── .gitignore                          # Loại trừ self-hosted/ và secrets cục bộ khỏi Git
 ├── .env.custom.example                 # Biến môi trường tùy chỉnh (Port, Mail, Retention Days)
 ├── config.example.yml                  # Mẫu cấu hình config.yml (SMTP, URL prefix, Security)
 ├── docker-compose.override.yml.example # File override Docker Compose
@@ -114,9 +115,16 @@ docker-images/sentry/
     └── sentry.conf                     # Cấu hình Nginx Reverse Proxy (SSL, WebSocket, Timeout)
 ```
 
+> [!NOTE]
+> Thư mục `self-hosted/` (chứa mã nguồn gốc của Sentry và các secret keys, logs runtime của riêng máy chủ đó) được cấu hình trong `.gitignore` để **không commit lên Git**. Khi triển khai trên máy chủ mới, bạn chỉ cần mang các file trên, script `deploy.sh` sẽ tự động kéo và cấu hình `self-hosted/` tại chỗ.
+
 ---
 
 ## 5. Cấu Hình Khi Máy Chủ Nằm Sau Proxy (Corporate HTTP/HTTPS Proxy)
+
+> [!TIP]
+> **Tự động hóa hoàn toàn với `deploy.sh`:**
+> Nếu bạn sử dụng script [deploy.sh](file:///home/vbox/projects/devops/docker-images/sentry/deploy.sh), script đã được tích hợp sẵn khả năng **tự động nhận diện Proxy, tự động chèn cờ `--trusted-host` và đồng bộ chứng chỉ Root CA**. Bạn chỉ cần đảm bảo máy chủ đã hoàn tất **Bước 1 (Docker Daemon)** và **Bước 2 (Docker Client)** dưới đây.
 
 Nếu máy chủ của bạn nằm trong mạng nội bộ doanh nghiệp và phải đi qua Proxy Server để ra ngoài Internet, bạn **bắt buộc** phải cấu hình proxy đồng bộ ở 3 cấp độ (Docker Daemon, Docker Client và Shell) trước khi thực hiện cài đặt.
 
@@ -178,6 +186,20 @@ system.http-proxy: 'http://proxy-server:port'
 system.https-proxy: 'http://proxy-server:port'
 ```
 
+### Bước 5: Xử lý lỗi SSL khi `pip install` (Nếu cài đặt thủ công)
+Nếu mạng của bạn sử dụng Enterprise Proxy có tính năng SSL Inspection, lệnh `pip install` trong `sentry/Dockerfile` sẽ gặp lỗi `certificate verify failed: self-signed certificate in certificate chain`.
+
+- **Nếu dùng `deploy.sh`:** Script tự động phát hiện và chèn cờ `--trusted-host` vào file Dockerfile cho bạn.
+- **Nếu cài đặt thủ công:** Chạy lệnh sau từ ngoài thư mục gốc trước khi chạy `./install.sh`:
+  ```bash
+  sed -i 's|pip install https://github.com|pip install --trusted-host github.com --trusted-host codeload.github.com --trusted-host pypi.org --trusted-host files.pythonhosted.org https://github.com|g' self-hosted/sentry/Dockerfile
+  ```
+  Và đồng bộ chứng chỉ CA nội bộ (nếu có):
+  ```bash
+  cp /usr/local/share/ca-certificates/*.crt self-hosted/certificates/
+  sed -i 's/# SETUP_CUSTOM_CA_CERTIFICATE=1/SETUP_CUSTOM_CA_CERTIFICATE=1/g' self-hosted/.env
+  ```
+
 ---
 
 ## 6. Hướng Dẫn Cài Đặt Chi Tiết
@@ -185,10 +207,11 @@ system.https-proxy: 'http://proxy-server:port'
 ### Cách 1: Sử dụng Script Tự Động (Khuyến nghị)
 
 Script [deploy.sh](file:///home/vbox/projects/devops/docker-images/sentry/deploy.sh) đã được cấu hình sẵn để:
-1. Tự động kiểm tra số lượng CPU, dung lượng RAM vật lý và Swap.
-2. Hỗ trợ tạo file Swap 8-16 GB nếu RAM của máy còn hạn chế.
-3. Kiểm tra tính tương thích của Docker Engine & Docker Compose v2.
-4. Clone mã nguồn `getsentry/self-hosted` từ GitHub và khởi động trình cài đặt chính thức.
+1. Tự động kiểm tra số lượng CPU, dung lượng RAM vật lý và hỗ trợ tạo file Swap 8-16 GB nếu RAM còn thiếu.
+2. Kiểm tra tính tương thích của Docker Engine & Docker Compose v2.
+3. Tự động truy vấn và kéo mã nguồn `getsentry/self-hosted` theo **Release Tag ổn định mới nhất** (thay vì nhánh master).
+4. **Tự động nhận diện Proxy & SSL Inspection:** Tự động can thiệp cờ `--trusted-host` và đồng bộ chứng chỉ Root CA nội bộ từ host.
+5. Khởi động trình cài đặt chính thức `./install.sh` và nhắc tạo tài khoản Admin Superuser.
 
 Chạy lệnh sau tại terminal của VM:
 

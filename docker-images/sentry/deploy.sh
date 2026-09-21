@@ -133,8 +133,79 @@ else
     cd "$TARGET_DIR"
 fi
 
-# 5. Optional custom environment configuration
-echo -e "\n${BLUE}>>> 4. Cấu hình biến môi trường tùy chỉnh...${NC}"
+# 5. Kiểm tra & Tự động xử lý môi trường Proxy / SSL Inspection
+echo -e "\n${BLUE}>>> 4. Kiểm tra cấu hình Proxy & Chứng chỉ SSL mạng nội bộ...${NC}"
+IS_BEHIND_PROXY=0
+DETECTED_PROXY="${https_proxy:-${http_proxy:-${HTTPS_PROXY:-${HTTP_PROXY:-}}}}"
+
+if [ -n "$DETECTED_PROXY" ]; then
+    IS_BEHIND_PROXY=1
+    echo -e " - Phát hiện Proxy trong biến môi trường shell: ${GREEN}${DETECTED_PROXY}${NC}"
+fi
+
+if [ -f ~/.docker/config.json ]; then
+    if grep -Ei "httpProxy|httpsProxy" ~/.docker/config.json 2>/dev/null; then
+        IS_BEHIND_PROXY=1
+        echo -e " - Phát hiện cấu hình Proxy trong: ${GREEN}~/.docker/config.json${NC}"
+    fi
+fi
+
+if [ -f /etc/systemd/system/docker.service.d/http-proxy.conf ]; then
+    IS_BEHIND_PROXY=1
+    echo -e " - Phát hiện cấu hình Proxy trong: ${GREEN}/etc/systemd/system/docker.service.d/http-proxy.conf${NC}"
+fi
+
+if [ "$IS_BEHIND_PROXY" -eq 0 ]; then
+    echo -e " - Không phát hiện biến môi trường Proxy tự động."
+    echo -e "Máy chủ này có đang chạy sau HTTP/HTTPS Proxy của công ty không? (y/n) [Mặc định: n]:"
+    read -r PROXY_CONFIRM
+    if [ "$PROXY_CONFIRM" = "y" ] || [ "$PROXY_CONFIRM" = "Y" ]; then
+        IS_BEHIND_PROXY=1
+    fi
+fi
+
+if [ "$IS_BEHIND_PROXY" -eq 1 ]; then
+    echo -e "${YELLOW}[!] Máy chủ đang hoạt động sau Proxy. Đang tự động xử lý cấu hình tránh lỗi SSL...${NC}"
+
+    # 1. Tự động chèn --trusted-host vào sentry/Dockerfile nếu chưa có
+    if [ -f "${TARGET_DIR}/sentry/Dockerfile" ]; then
+        if ! grep -q "trusted-host" "${TARGET_DIR}/sentry/Dockerfile"; then
+            echo " - Đang tự động chèn cờ --trusted-host vào ${TARGET_DIR}/sentry/Dockerfile..."
+            sed -i 's|pip install https://github.com|pip install --trusted-host github.com --trusted-host codeload.github.com --trusted-host pypi.org --trusted-host files.pythonhosted.org https://github.com|g' "${TARGET_DIR}/sentry/Dockerfile"
+            echo -e "   ${GREEN}[OK] Đã cấu hình pip trusted-host cho sentry/Dockerfile.${NC}"
+        else
+            echo -e "   ${GREEN}[OK] sentry/Dockerfile đã có cấu hình trusted-host.${NC}"
+        fi
+    fi
+
+    # 2. Tự động đồng bộ chứng chỉ Root CA nội bộ từ host (nếu có)
+    if compgen -G "/usr/local/share/ca-certificates/*.crt" > /dev/null; then
+        echo " - Phát hiện chứng chỉ CA tại /usr/local/share/ca-certificates/, đang đồng bộ vào Sentry..."
+        mkdir -p "${TARGET_DIR}/certificates"
+        cp /usr/local/share/ca-certificates/*.crt "${TARGET_DIR}/certificates/" 2>/dev/null || true
+        
+        # Bật SETUP_CUSTOM_CA_CERTIFICATE=1 trong .env
+        if grep -q "SETUP_CUSTOM_CA_CERTIFICATE" "${TARGET_DIR}/.env"; then
+            sed -i 's/# SETUP_CUSTOM_CA_CERTIFICATE=1/SETUP_CUSTOM_CA_CERTIFICATE=1/g' "${TARGET_DIR}/.env"
+        else
+            echo "SETUP_CUSTOM_CA_CERTIFICATE=1" >> "${TARGET_DIR}/.env"
+        fi
+        echo -e "   ${GREEN}[OK] Đã kích hoạt SETUP_CUSTOM_CA_CERTIFICATE=1.${NC}"
+    fi
+
+    # 3. Kiểm tra cảnh báo noProxy trong ~/.docker/config.json
+    if [ -f ~/.docker/config.json ]; then
+        if ! grep -qi "kafka" ~/.docker/config.json 2>/dev/null; then
+            echo -e "${RED}[CẢNH BÁO] ~/.docker/config.json có proxy nhưng thiếu tên container Sentry trong noProxy!${NC}"
+            echo -e "${YELLOW}           Vui lòng thêm: sentry,postgres,redis,clickhouse,kafka,zookeeper,snuba,relay,symbolicator,web vào noProxy để tránh lỗi sập hệ thống.${NC}"
+        fi
+    fi
+else
+    echo -e "${GREEN}[OK] Bỏ qua các bước can thiệp SSL/Proxy.${NC}"
+fi
+
+# 6. Optional custom environment configuration
+echo -e "\n${BLUE}>>> 5. Cấu hình biến môi trường tùy chỉnh...${NC}"
 if [ -f "${SCRIPT_DIR}/.env.custom" ]; then
     echo "Đang nạp cấu hình từ ${SCRIPT_DIR}/.env.custom vào self-hosted/.env..."
     cat "${SCRIPT_DIR}/.env.custom" >> "${TARGET_DIR}/.env"
@@ -144,8 +215,8 @@ else
     echo -e "${YELLOW}(Bạn có thể chỉnh sửa file self-hosted/sentry/config.yml và self-hosted/.env sau)${NC}"
 fi
 
-# 6. Run install.sh
-echo -e "\n${BLUE}>>> 5. Bắt đầu quá trình khởi tạo (install.sh)...${NC}"
+# 7. Run install.sh
+echo -e "\n${BLUE}>>> 6. Bắt đầu quá trình khởi tạo (install.sh)...${NC}"
 echo -e "${YELLOW}Quá trình này sẽ kéo các image, migrate database PostgreSQL, ClickHouse, Snuba, Kafka...${NC}"
 echo -e "${YELLOW}Thời gian thực hiện có thể mất từ 10 - 25 phút tùy tốc độ mạng và phần cứng.${NC}"
 echo -e "${YELLOW}Bạn có muốn chạy ./install.sh ngay bây giờ? (y/n)${NC}"
