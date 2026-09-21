@@ -145,7 +145,7 @@ sudo systemctl restart docker
 *(Thay `http://proxy-server:port` bằng địa chỉ IP và port của proxy trong mạng của bạn)*.
 
 ### Bước 2: Cấu hình Docker Client (Cực kỳ quan trọng khi chạy `install.sh`)
-Trong quá trình chạy `./install.sh`, Sentry sẽ tạo container tạm để build và chạy lệnh `apt-get` (ví dụ cài đặt gói `jq`). Bạn cần cấu hình file `~/.docker/config.json` để các container này nhận được proxy ra ngoài:
+Trong quá trình chạy `./install.sh`, Sentry sẽ tạo container tạm để build và chạy lệnh `apt-get` (ví dụ cài đặt gói `jq`). Bạn cần cấu hình file `~/.docker/config.json` để các container này nhận được proxy ra ngoài, đồng thời **bỏ qua toàn bộ các service nội bộ của Sentry**:
 
 ```bash
 mkdir -p ~/.docker
@@ -155,7 +155,7 @@ cat <<'EOF' > ~/.docker/config.json
     "default": {
       "httpProxy": "http://proxy-server:port",
       "httpsProxy": "http://proxy-server:port",
-      "noProxy": "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,sentry,postgres,redis,clickhouse,kafka,zookeeper,snuba,relay,symbolicator,web,memcached,nginx,.local"
+      "noProxy": "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.local,web,nginx,relay,postgres,pgbouncer,redis,kafka,clickhouse,memcached,seaweedfs,smtp,symbolicator,symbolicator-cleanup,snuba,snuba-api,snuba-replacer,snuba-errors-consumer,snuba-transactions-consumer,snuba-replays-consumer,snuba-metrics-consumer,snuba-outcomes-consumer,snuba-outcomes-accepted-consumer,snuba-outcomes-billing-consumer,snuba-group-attributes-consumer,snuba-issue-occurrence-consumer,snuba-subscription-consumer-events,snuba-subscription-consumer-transactions,snuba-subscription-consumer-metrics,snuba-subscription-consumer-eap-items,snuba-eap-items-consumer,snuba-profiling-profiles-consumer,snuba-profiling-profile-chunks-consumer,snuba-profiling-functions-consumer,events-consumer,transactions-consumer,metrics-consumer,attachments-consumer,process-spans,ingest-monitors,ingest-occurrences,ingest-feedback-events,post-process-forwarder-errors,post-process-forwarder-transactions,post-process-forwarder-issue-platform,taskbroker,taskscheduler,taskworker,launchpad-taskworker,uptime-checker,uptime-results,monitors-clock-tick,monitors-clock-tasks,vroom,sentry,sentry-cleanup"
     }
   }
 }
@@ -164,7 +164,7 @@ EOF
 
 > [!CAUTION]
 > **Quy tắc "sống còn" với `noProxy`:**
-> Danh sách `noProxy` **bắt buộc phải khai báo dải mạng nội bộ Docker và toàn bộ tên các container nội bộ** (`kafka`, `clickhouse`, `postgres`, `redis`, `snuba`, `relay`...). Nếu thiếu, các container Sentry gọi nội bộ nhau sẽ bị ném ra proxy bên ngoài và dẫn tới lỗi sập toàn bộ hệ thống!
+> Hệ thống Sentry Self-Hosted bao gồm **53 microservices nội bộ**. Danh sách `noProxy` bên trên đã bao gồm đầy đủ **toàn bộ 53 service** (Core databases, Snuba streaming consumers, Celery workers, Relay, Symbolicator...) cùng các dải mạng Docker (`172.16.0.0/12`). Nếu thiếu bất kỳ service nào, Docker sẽ đẩy request nội bộ ra proxy công ty và gây lỗi mất kết nối (502 / Connection Refused) ngay lập tức!
 
 ### Bước 3: Cấu hình phiên làm việc Terminal (Shell Environment)
 Trước khi chạy `git clone` hoặc script `./deploy.sh`, hãy nạp proxy vào terminal:
@@ -174,8 +174,10 @@ export http_proxy="http://proxy-server:port"
 export https_proxy="http://proxy-server:port"
 export HTTP_PROXY="http://proxy-server:port"
 export HTTPS_PROXY="http://proxy-server:port"
-export no_proxy="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
-export NO_PROXY="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+# Toàn bộ danh sách 53 service của Sentry Stack bỏ qua Proxy:
+export no_proxy="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.local,web,nginx,relay,postgres,pgbouncer,redis,kafka,clickhouse,memcached,seaweedfs,smtp,symbolicator,symbolicator-cleanup,snuba,snuba-api,snuba-replacer,snuba-errors-consumer,snuba-transactions-consumer,snuba-replays-consumer,snuba-metrics-consumer,snuba-outcomes-consumer,snuba-outcomes-accepted-consumer,snuba-outcomes-billing-consumer,snuba-group-attributes-consumer,snuba-issue-occurrence-consumer,snuba-subscription-consumer-events,snuba-subscription-consumer-transactions,snuba-subscription-consumer-metrics,snuba-subscription-consumer-eap-items,snuba-eap-items-consumer,snuba-profiling-profiles-consumer,snuba-profiling-profile-chunks-consumer,snuba-profiling-functions-consumer,events-consumer,transactions-consumer,metrics-consumer,attachments-consumer,process-spans,ingest-monitors,ingest-occurrences,ingest-feedback-events,post-process-forwarder-errors,post-process-forwarder-transactions,post-process-forwarder-issue-platform,taskbroker,taskscheduler,taskworker,launchpad-taskworker,uptime-checker,uptime-results,monitors-clock-tick,monitors-clock-tasks,vroom,sentry,sentry-cleanup"
+export NO_PROXY="$no_proxy"
 ```
 
 ### Bước 4: Cấu hình Outbound HTTP Proxy cho Sentry Backend (Tùy chọn)
