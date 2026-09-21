@@ -331,7 +331,7 @@ File cấu hình mẫu đã được chuẩn bị tại: [nginx/sentry.conf](fil
 
 ---
 
-## 8. Vận Hành, Bảo Trì & Dọn Dẹp Dữ Liệu
+## 8. Vận Hành, Bảo Trì & Xử Lý Sự Cố Thường Gặp
 
 ### Quản lý vòng đời dịch vụ:
 ```bash
@@ -365,6 +365,42 @@ Bạn có thể thiết lập Cronjob trên VM (`crontab -e`) để tự động
 ```cron
 0 3 * * * cd /home/vbox/projects/devops/docker-images/sentry/self-hosted && docker compose run --rm web cleanup --days 30 >> /var/log/sentry-cleanup.log 2>&1
 ```
+
+### Khắc phục lỗi: "CSRF Validation Failed" khi Đăng nhập / Submit Form
+
+Lỗi này xuất hiện khi cơ chế bảo mật CSRF của Django kiểm tra thấy URL đang truy cập trên trình duyệt không trùng khớp với cấu hình của Sentry:
+
+```text
+CSRF Validation Failed: A required security token was not found or was invalid.
+```
+
+**Các bước khắc phục triệt để:**
+
+1. **Bước 1: Khớp `system.url-prefix` trong `self-hosted/sentry/config.yml`:**  
+   Giá trị này **bắt buộc phải khớp 100%** với URL bạn đang gõ trên thanh địa chỉ trình duyệt (đúng giao thức `http://` hoặc `https://`, đúng IP/Domain và cổng, **không có dấu `/` ở cuối**):
+   ```yaml
+   # Nếu truy cập trực tiếp qua IP máy chủ:
+   system.url-prefix: 'http://<IP_MAY_CHU>:9000'
+
+   # Nếu truy cập qua Domain / Reverse Proxy HTTPS:
+   system.url-prefix: 'https://sentry.yourdomain.com'
+   ```
+
+2. **Bước 2: Khai báo `CSRF_TRUSTED_ORIGINS` trong `self-hosted/sentry/sentry.conf.py`:**  
+   Sentry phiên bản mới (sử dụng Django 4+) kiểm tra CSRF rất nghiêm ngặt đối với các form POST. Mở file `self-hosted/sentry/sentry.conf.py` và thêm vào cuối file (hoặc tìm đến dòng `CSRF_TRUSTED_ORIGINS` có sẵn để bỏ comment):
+   ```python
+   # Khai báo các URL hợp lệ mà người dùng truy cập Web UI
+   CSRF_TRUSTED_ORIGINS = ["http://<IP_MAY_CHU>:9000", "https://sentry.yourdomain.com"]
+   ```
+
+3. **Bước 3: Khởi động lại service Web để áp dụng:**
+   ```bash
+   cd self-hosted
+   docker compose restart web
+   ```
+
+> [!TIP]
+> Nếu sau khi sửa cấu hình và khởi động lại mà trình duyệt vẫn hiện lỗi CSRF, hãy mở bằng **tab Ẩn danh (Incognito / Private Window)** hoặc xóa Cookie của trang Sentry để loại bỏ cookie phiên bản cũ của lần cài đặt trước.
 
 ---
 
