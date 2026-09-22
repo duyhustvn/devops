@@ -12,6 +12,7 @@ Container image chuyên dụng để **profiling, troubleshooting và trích xu�
 * **`busybox`**: Bộ tiện ích dòng lệnh hỗ trợ debug nhanh.
 
 ### Scripts tiện ích (Bake sẵn trong `/usr/local/bin`)
+* **`probe`** (hoặc `probe.py`): Daemon thu thập chỉ số cgroup (CPU CFS quota/throttling, memory), TCP accept queue backlog, trạng thái socket, tiến trình worker và độ trễ HTTP health check theo chu kỳ (định dạng `.jsonl`). Có cả bản binary tĩnh Go (`probe`) và bản Python (`probe.py`).
 * **`profile-pyspy`** (hoặc `profile-pyspy.sh`): Tự động quét tiến trình Python, đo CPU và render FlameGraph SVG trong 1 lệnh.
 * **`profile-perf`** (hoặc `profile-perf.sh`): Chạy `perf record` + `flamegraph.pl` tự động với tần số 99Hz tối ưu.
 * **`analyze-connections`** (hoặc `analyze-connections.sh`): Báo cáo tình trạng kết nối mạng, phát hiện rò rỉ socket (`CLOSE-WAIT`), nghẽn hàng đợi (`Recv-Q/Send-Q`), và Top Remote IPs.
@@ -264,6 +265,33 @@ analyze-connections -p 8080
 
 # 6. Xem Top 20 địa chỉ IP từ xa kết nối tới Pod
 analyze-connections -t 20
+```
+
+---
+
+### 5. Thu thập chỉ số Cgroup, TCP Accept Queue & Health Check với `probe` / `probe.py`
+
+Công cụ `probe` (Go binary) và `probe.py` (Python script) liên tục thu thập viễn trắc hệ điều hành bên trong Pod theo chu kỳ (mặc định 1 giây), ghi ra file JSON Lines (`.jsonl`):
+* **CPU Quota & CFS Throttling**: Số chu kỳ và thời gian bị bóp nghẽn (`nr_throttled`, `throttled_usec`), phát hiện thiếu CPU core.
+* **TCP Socket & Accept Queue**: Hàng đợi kết nối (`accept_queue` / `backlog_max`) và phân bố trạng thái socket (`ESTAB`, `TIME_WAIT`, `SYN_RECV`,...).
+* **Tiến trình ứng dụng**: Tự động quét các worker process (`uvicorn`, `gunicorn`, `granian` hoặc Go process PID 1) để đếm số FD và số OS threads.
+* **HTTP Health Check Latency**: Đo thời gian phản hồi (ms) của endpoint `/health/live`.
+
+```bash
+# 1. Chạy thường trực lấy mẫu trong Pod (khuyên dùng bản binary tĩnh Go):
+probe --port 8000 --out /tmp/probe.jsonl
+
+# 2. Hoặc chạy bản Python:
+probe.py --port 8000 --out /tmp/probe.jsonl
+
+# 3. Lấy nhanh 1 snapshot metadata và hiện trạng container rồi thoát ngay:
+probe --once
+
+# 4. Tùy chỉnh chu kỳ lấy mẫu (ví dụ 0.5s) và URL endpoint health check:
+probe --interval 0.5 --target http://127.0.0.1:8000 --health-timeout 2.0 --out /tmp/probe.jsonl
+
+# 5. Chạy từ bên ngoài Pod (chỉ đo độ trễ health check, không đọc cgroup):
+probe --target http://<POD_IP>:8000 --no-cgroup --out /tmp/probe-outside.jsonl
 ```
 
 ---

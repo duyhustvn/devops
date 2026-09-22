@@ -1,7 +1,16 @@
 ARG BASE_IMAGE=ubuntu:22.04
 
 # ==========================================
-# Stage 1: Builder (Tải & chuẩn bị công cụ)
+# Stage 1: Go Builder (Biên dịch probe binary)
+# ==========================================
+FROM golang:alpine AS go-builder
+
+WORKDIR /build
+COPY probe.go .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o probe probe.go
+
+# ==========================================
+# Stage 2: Tools Builder (Tải & chuẩn bị py-spy, FlameGraph)
 # ==========================================
 FROM ${BASE_IMAGE} AS builder
 
@@ -24,7 +33,7 @@ RUN git clone --depth 1 https://github.com/brendangregg/FlameGraph /opt/FlameGra
     && rm -rf /opt/FlameGraph/.git
 
 # ==========================================
-# Stage 2: Final Runtime Image
+# Stage 3: Final Runtime Image
 # ==========================================
 FROM ${BASE_IMAGE}
 
@@ -41,6 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         linux-tools-generic \
         linux-tools-common \
         perl \
+        python3-minimal \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -50,13 +60,14 @@ COPY perf-wrapper.sh /usr/local/bin/perf
 RUN chmod +x /usr/local/bin/perf \
     && ln -sf /usr/local/bin/perf /usr/bin/perf
 
-# Copy binaries và scripts từ stage builder
+# Copy binaries và scripts từ các stage builder
 COPY --from=builder /usr/local/bin/py-spy /usr/local/bin/py-spy
 COPY --from=builder /opt/FlameGraph /opt/FlameGraph
+COPY --from=go-builder /build/probe /usr/local/bin/probe
 
-# Copy các helper scripts hữu ích (py-spy, perf flamegraph, analyze-connections)
+# Copy các helper scripts hữu ích (py-spy, perf flamegraph, analyze-connections, probe.py)
 COPY scripts/ /usr/local/bin/
-RUN chmod +x /usr/local/bin/*.sh \
+RUN chmod +x /usr/local/bin/*.sh /usr/local/bin/*.py \
     && ln -sf /usr/local/bin/profile-pyspy.sh /usr/local/bin/profile-pyspy \
     && ln -sf /usr/local/bin/profile-perf.sh /usr/local/bin/profile-perf \
     && ln -sf /usr/local/bin/analyze-connections.sh /usr/local/bin/analyze-connections
