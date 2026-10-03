@@ -1,3 +1,12 @@
+vrrp_script check_apiserver {
+    script "/etc/keepalived/check_apiserver.sh"
+    interval 3
+    timeout 5
+    weight -20
+    fall 2
+    rise 2
+}
+
 vrrp_instance VI_1 {
     state MASTER
     interface {{ vip_interface }}
@@ -11,4 +20,8 @@ vrrp_instance VI_1 {
     virtual_ipaddress {
         {{ vip }}/24
     }
+    track_script {
+        check_apiserver
+    }
 }
+

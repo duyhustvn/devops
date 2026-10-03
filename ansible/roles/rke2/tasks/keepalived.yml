@@ -7,6 +7,14 @@
     name: keepalived
     state: present
 
+- name: Deploy Keepalived healthcheck script for K8s Master (masters only)
+  template:
+    src: 'keepalived/check_apiserver.sh.j2'
+    dest: '/etc/keepalived/check_apiserver.sh'
+    mode: '0755'
+    owner: root
+    group: root
+
 - name: Configure Keepalived for VIP {{ vip }} (masters only)
   template:
     src: 'keepalived/keepalived.conf.j2'
@@ -14,3 +22,9 @@
     mode: '0644'
   notify:
     - Reload Keepalived
+
+- name: Ensure Keepalived service is started and enabled
+  systemd:
+    name: keepalived
+    state: started
+    enabled: yes

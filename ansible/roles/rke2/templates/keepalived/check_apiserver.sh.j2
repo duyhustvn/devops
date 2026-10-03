@@ -1,0 +1,24 @@
+#!/bin/bash
+# ==============================================================================
+# Health Check Script cho Keepalived giám sát K8s Master (kube-apiserver)
+# - Trả về 0 (Exit 0): API Server khỏe mạnh -> Giữ nguyên Priority / VIP
+# - Trả về 1 (Exit 1): API Server lỗi -> Giảm Priority để Keepalived chuyển VIP
+# ==============================================================================
+
+APISERVER_PORT={{ k8s_apiserver_port | default(6443) }}
+TIMEOUT_SEC=3
+
+# 1. Kiểm tra endpoint /readyz của Kubernetes API Server
+if curl --max-time "${TIMEOUT_SEC}" --silent --insecure --fail \
+    "https://127.0.0.1:${APISERVER_PORT}/readyz" > /dev/null 2>&1; then
+    exit 0
+fi
+
+# 2. Fallback: Kiểm tra /livez nếu /readyz đang khởi động
+if curl --max-time "${TIMEOUT_SEC}" --silent --insecure --fail \
+    "https://127.0.0.1:${APISERVER_PORT}/livez" > /dev/null 2>&1; then
+    exit 0
+fi
+
+# 3. Cả hai endpoint đều không phản hồi -> Trả về lỗi
+exit 1
