@@ -204,16 +204,93 @@ else
     echo -e "${GREEN}[OK] Bỏ qua các bước can thiệp SSL/Proxy.${NC}"
 fi
 
-# 6. Optional custom environment configuration
-echo -e "\n${BLUE}>>> 5. Cấu hình biến môi trường tùy chỉnh...${NC}"
-if [ -f "${SCRIPT_DIR}/.env.custom" ]; then
-    echo "Đang nạp cấu hình từ ${SCRIPT_DIR}/.env.custom vào self-hosted/.env..."
-    cat "${SCRIPT_DIR}/.env.custom" >> "${TARGET_DIR}/.env"
-    echo -e "${GREEN}[OK] Đã nạp cấu hình tùy chỉnh.${NC}"
-else
-    echo "Chưa có file .env.custom. Sử dụng cấu hình mặc định."
-    echo -e "${YELLOW}(Bạn có thể chỉnh sửa file self-hosted/sentry/config.yml và self-hosted/.env sau)${NC}"
+# 6. Kiểm tra & nạp cấu hình môi trường tùy chỉnh (.env hoặc .env.custom)
+echo -e "\n${BLUE}>>> 5. Kiểm tra & cấu hình biến môi trường (.env)...${NC}"
+
+ENV_SOURCE=""
+if [ -f "${SCRIPT_DIR}/.env" ]; then
+    ENV_SOURCE="${SCRIPT_DIR}/.env"
+elif [ -f "${SCRIPT_DIR}/.env.custom" ]; then
+    ENV_SOURCE="${SCRIPT_DIR}/.env.custom"
 fi
+
+if [ -z "$ENV_SOURCE" ]; then
+    echo -e "${RED}[ERROR] Không tìm thấy file .env (hoặc .env.custom) tại:${NC}"
+    echo -e "        ${SCRIPT_DIR}/.env"
+    echo -e "${YELLOW}[HƯỚNG DẪN] Vui lòng tạo file .env từ file mẫu .env.custom.example:${NC}"
+    echo -e "  cp ${SCRIPT_DIR}/.env.custom.example ${SCRIPT_DIR}/.env"
+    echo -e "Sau đó mở file .env và điền giá trị cho biến SENTRY_URL_PREFIX."
+    exit 1
+fi
+
+echo -e " - Tìm thấy file cấu hình: ${GREEN}${ENV_SOURCE}${NC}"
+
+# Trích xuất giá trị SENTRY_URL_PREFIX (hoặc fallback SYSTEM_URL_PREFIX)
+SENTRY_URL_PREFIX=$(grep -E '^[[:space:]]*(SENTRY_URL_PREFIX|SYSTEM_URL_PREFIX)=' "$ENV_SOURCE" | head -n1 | cut -d'=' -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'"'"']//' -e 's/["'"'"']$//' || true)
+
+DETECTED_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "127.0.0.1")
+
+if [ -z "$SENTRY_URL_PREFIX" ]; then
+    echo -e "${RED}[ERROR] File ${ENV_SOURCE} tồn tại nhưng thiếu giá trị cấu hình cho trường SENTRY_URL_PREFIX!${NC}"
+    echo -e "${YELLOW}[HƯỚNG DẪN] Sentry bắt buộc phải có URL gốc để cấu hình system.url-prefix và chống lỗi CSRF Token khi đăng nhập.${NC}"
+    echo -e "Vui lòng mở file ${ENV_SOURCE} và điền giá trị, ví dụ:"
+    echo -e "  ${GREEN}SENTRY_URL_PREFIX=http://${DETECTED_IP}:9000${NC} (nếu truy cập qua IP máy chủ)"
+    echo -e "  ${GREEN}SENTRY_URL_PREFIX=https://sentry.yourdomain.com${NC} (nếu dùng Domain qua Nginx / Reverse Proxy)"
+    exit 1
+fi
+
+# Loại bỏ dấu / ở cuối nếu có để tránh lỗi so khớp CSRF của Django
+SENTRY_URL_PREFIX="${SENTRY_URL_PREFIX%/}"
+
+# Kiểm tra cú pháp URL hợp lệ
+if [[ ! "$SENTRY_URL_PREFIX" =~ ^https?:// ]]; then
+    echo -e "${RED}[ERROR] Giá trị SENTRY_URL_PREFIX='${SENTRY_URL_PREFIX}' không hợp lệ!${NC}"
+    echo -e "${YELLOW}URL phải bắt đầu bằng http:// hoặc https:// (ví dụ: http://${DETECTED_IP}:9000)${NC}"
+    exit 1
+fi
+
+echo -e " - Xác nhận URL gốc Sentry : ${GREEN}${SENTRY_URL_PREFIX}${NC}"
+
+# Đảm bảo file cấu hình đã được tạo trong self-hosted/sentry/
+if [ ! -f "${TARGET_DIR}/sentry/config.yml" ]; then
+    cp "${TARGET_DIR}/sentry/config.example.yml" "${TARGET_DIR}/sentry/config.yml"
+fi
+if [ ! -f "${TARGET_DIR}/sentry/sentry.conf.py" ]; then
+    cp "${TARGET_DIR}/sentry/sentry.conf.example.py" "${TARGET_DIR}/sentry/sentry.conf.py"
+fi
+
+# Tự động cập nhật system.url-prefix trong self-hosted/sentry/config.yml
+if grep -q "^[# ]*system\.url-prefix:" "${TARGET_DIR}/sentry/config.yml"; then
+    sed -i -E "s|^[# ]*system\.url-prefix:.*|system.url-prefix: '${SENTRY_URL_PREFIX}'|" "${TARGET_DIR}/sentry/config.yml"
+else
+    echo "system.url-prefix: '${SENTRY_URL_PREFIX}'" >> "${TARGET_DIR}/sentry/config.yml"
+fi
+echo -e " - ${GREEN}[OK] Đã cập nhật system.url-prefix trong self-hosted/sentry/config.yml${NC}"
+
+# Tự động cấu hình CSRF_TRUSTED_ORIGINS trong self-hosted/sentry/sentry.conf.py
+CSRF_LIST="[\"${SENTRY_URL_PREFIX}\", \"http://127.0.0.1:9000\", \"http://localhost:9000\"]"
+if grep -q "^[# ]*CSRF_TRUSTED_ORIGINS" "${TARGET_DIR}/sentry/sentry.conf.py"; then
+    sed -i -E "s|^[# ]*CSRF_TRUSTED_ORIGINS.*|CSRF_TRUSTED_ORIGINS = ${CSRF_LIST}|" "${TARGET_DIR}/sentry/sentry.conf.py"
+else
+    echo -e "\nCSRF_TRUSTED_ORIGINS = ${CSRF_LIST}" >> "${TARGET_DIR}/sentry/sentry.conf.py"
+fi
+echo -e " - ${GREEN}[OK] Đã cấu hình CSRF_TRUSTED_ORIGINS trong self-hosted/sentry/sentry.conf.py${NC}"
+
+# Nạp các biến môi trường từ file nguồn vào self-hosted/.env (cập nhật in-place nếu đã có)
+echo "Đang đồng bộ cấu hình từ ${ENV_SOURCE} vào ${TARGET_DIR}/.env..."
+while IFS= read -r line || [ -n "$line" ]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    key=$(echo "$line" | cut -d'=' -f1 | tr -d ' ')
+    if [ -n "$key" ]; then
+        if grep -q "^${key}=" "${TARGET_DIR}/.env"; then
+            sed -i "s|^${key}=.*|${line}|" "${TARGET_DIR}/.env"
+        else
+            echo "$line" >> "${TARGET_DIR}/.env"
+        fi
+    fi
+done < "$ENV_SOURCE"
+echo -e "${GREEN}[OK] Đã đồng bộ toàn bộ biến môi trường vào self-hosted/.env.${NC}"
 
 # 7. Run install.sh
 echo -e "\n${BLUE}>>> 6. Bắt đầu quá trình khởi tạo (install.sh)...${NC}"
@@ -230,11 +307,13 @@ if [ "$PROCEED" = "y" ] || [ "$PROCEED" = "Y" ]; then
     echo -e "Để khởi động dịch vụ Sentry:"
     echo -e "  cd ${TARGET_DIR}"
     echo -e "  docker compose up -d"
-    echo -e "\nTruy cập Web UI tại: ${BLUE}http://<IP_CUA_VM>:9000${NC}"
+    echo -e "\nTruy cập Web UI tại: ${BLUE}${SENTRY_URL_PREFIX}${NC}"
 else
-    echo -e "${YELLOW}Đã tải mã nguồn về ${TARGET_DIR}.${NC}"
+    echo -e "${YELLOW}Đã tải mã nguồn và cấu hình đầy đủ tại ${TARGET_DIR}.${NC}"
     echo -e "Khi nào bạn sẵn sàng cài đặt, hãy chạy:"
     echo -e "  cd ${TARGET_DIR}"
     echo -e "  ./install.sh"
     echo -e "  docker compose up -d"
+    echo -e "\nSau đó truy cập Web UI tại: ${BLUE}${SENTRY_URL_PREFIX}${NC}"
 fi
+

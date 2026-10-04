@@ -213,7 +213,9 @@ Script [deploy.sh](file:///home/vbox/projects/devops/docker-images/sentry/deploy
 2. Kiểm tra tính tương thích của Docker Engine & Docker Compose v2.
 3. Tự động truy vấn và kéo mã nguồn `getsentry/self-hosted` theo **Release Tag ổn định mới nhất** (thay vì nhánh master).
 4. **Tự động nhận diện Proxy & SSL Inspection:** Tự động can thiệp cờ `--trusted-host` và đồng bộ chứng chỉ Root CA nội bộ từ host.
-5. Khởi động trình cài đặt chính thức `./install.sh` và nhắc tạo tài khoản Admin Superuser.
+5. **Tự động kiểm tra file `.env` và chống lỗi CSRF Token:** Bắt buộc có biến `SENTRY_URL_PREFIX` trong `.env` (nếu thiếu sẽ báo lỗi ngay), tự động đồng bộ vào `system.url-prefix` trong `config.yml` và mở khóa `CSRF_TRUSTED_ORIGINS` trong `sentry.conf.py`.
+6. Khởi động trình cài đặt chính thức `./install.sh` và nhắc tạo tài khoản Admin Superuser.
+
 
 Chạy lệnh sau tại terminal của VM:
 

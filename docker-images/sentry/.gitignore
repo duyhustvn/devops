@@ -1,4 +1,6 @@
 # Sentry self-hosted cloned repo and local runtime secrets
 self-hosted/
 .env.custom
+.env
 *.log
+
