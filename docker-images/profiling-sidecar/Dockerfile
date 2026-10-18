@@ -50,7 +50,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         linux-tools-generic \
         linux-tools-common \
         perl \
-        python3-minimal \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -65,9 +64,9 @@ COPY --from=builder /usr/local/bin/py-spy /usr/local/bin/py-spy
 COPY --from=builder /opt/FlameGraph /opt/FlameGraph
 COPY --from=go-builder /build/probe /usr/local/bin/probe
 
-# Copy các helper scripts hữu ích (py-spy, perf flamegraph, analyze-connections, probe.py)
+# Copy các helper scripts hữu ích (py-spy, perf flamegraph, analyze-connections)
 COPY scripts/ /usr/local/bin/
-RUN chmod +x /usr/local/bin/*.sh /usr/local/bin/*.py \
+RUN chmod +x /usr/local/bin/*.sh \
     && ln -sf /usr/local/bin/profile-pyspy.sh /usr/local/bin/profile-pyspy \
     && ln -sf /usr/local/bin/profile-perf.sh /usr/local/bin/profile-perf \
     && ln -sf /usr/local/bin/analyze-connections.sh /usr/local/bin/analyze-connections
