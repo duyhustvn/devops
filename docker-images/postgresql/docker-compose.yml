@@ -1,0 +1,45 @@
+services:
+  postgresql:
+    image: postgres:18
+    container_name: postgresql
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    secrets:
+      - postgres_password
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_URI: "postgresql:5432/postgres?sslmode=disable"
+      DATA_SOURCE_USER: "postgres"
+      DATA_SOURCE_PASS_FILE: "/run/secrets/postgres_password"
+    ports:
+      - "9187:9187"
+    secrets:
+      - postgres_password
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    restart: always
+
+secrets:
+  postgres_password:
+    file: ./postgres_secret
+
+volumes:
+  postgresql_data:
+    name: postgresql_data
