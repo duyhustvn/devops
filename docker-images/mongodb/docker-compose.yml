@@ -4,6 +4,7 @@ services:
     container_name: mongodb
     restart: always 
     environment:
+      GLIBC_TUNABLES: "glibc.pthread.rseq=1"
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongodb_admin_password
     ports:
